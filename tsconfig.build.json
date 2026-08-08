@@ -6,8 +6,14 @@
     "declarationMap": true,
     "emitDeclarationOnly": true,
     "outDir": "./dist",
-    "rootDir": "./src/lib",
+    "rootDir": "./src",
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.build.tsbuildinfo"
   },
-  "include": ["src/lib"]
+  "include": ["src/index.ts", "src/core", "src/recharts"],
+  "exclude": [
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.stories.ts",
+    "**/*.stories.tsx"
+  ]
 }
