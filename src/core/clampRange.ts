@@ -53,8 +53,11 @@ export function clampRange(range: Range, constraints: RangeConstraints): Range {
   return { start, end };
 }
 
-/** 음수·NaN 등 의미 없는 minRange는 기본값으로 대체. 명시적 0은 허용 */
-function sanitizeMinRange(minRange: number | undefined): number {
+/**
+ * 음수·NaN 등 의미 없는 minRange는 기본값으로 대체. 명시적 0은 허용.
+ * clampRange와 zoomRange가 공유한다 (core 내부용 — 패키지 공개 API 아님).
+ */
+export function sanitizeMinRange(minRange: number | undefined): number {
   if (minRange === undefined || !Number.isFinite(minRange) || minRange < 0) {
     return DEFAULT_MIN_RANGE;
   }
