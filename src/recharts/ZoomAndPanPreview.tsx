@@ -46,10 +46,10 @@ export function ZoomAndPanPreview<T>({
 
   /**
    * 차트용 데이터 반환
-   * [TEST] Preview는 항상 전체 데이터. Bucket Index를 __rangeX 숫자축으로 사용.
-   *      → 체크리스트 4 발견: Preview가 전체 데이터를 필요로 하므로 정식 API에서는 controller.previewData로 설계해야 함.
+   * [TEST] Preview는 항상 전체 데이터(controller.data). Bucket Index를 __rangeX 숫자축으로 사용.
+   *      TODO: 정규화 __rangeX를 포함한 previewData 정식 설계는 P2-⑨(Preview 정적 UI)에서.
    */
-  const previewData = controller.__testFullData.map((datum, index) => ({
+  const previewData = controller.data.map((datum, index) => ({
     __rangeX: index,
     __y: getY(datum),
   }));
