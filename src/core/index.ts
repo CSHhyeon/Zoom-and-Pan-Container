@@ -5,3 +5,4 @@ export * from "./normalizeBucket";
 export * from "./clampRange";
 export * from "./zoomRange";
 export * from "./panRange";
+export * from "./resizeRange";
