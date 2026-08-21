@@ -17,6 +17,7 @@ dist-ssr
 !.vscode/extensions.json
 .idea
 .DS_Store
+desktop.ini
 *.suo
 *.ntvs*
 *.njsproj
@@ -28,3 +29,5 @@ storybook-static
 
 # npm pack 산출물
 *.tgz
+
+CLAUDE.md
