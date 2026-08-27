@@ -1,58 +1,55 @@
 /**
- * [TEST] ZoomAndPanPreview — 정적 렌더링만 (조작 없음)
+ * ZoomAndPanPreview — 전체 추이 위에 현재 Window를 표시하는 Preview UI.
+ * (P2-⑨: 정적 렌더링만. Pointer 조작은 P3에서 이 레이어들 위에 얹는다)
  *
- * 목적: range → % 계산으로 Dim/Window/Handle이 정확히 배치되는지,
- *       controller={zap} 객체 전달 패턴이 자연스러운지 확인.
- *       Pointer 인터랙션은 Handle Resize 작업 때부터. 다듬지 말 것.
+ * 구조: 위치 기준 컨테이너 위에 절대 위치 레이어 5겹을 겹친다.
+ *   추이 차트(0) < Left/Right Dim(10) < Window(20) < Left/Right Handle(30)
+ * 이 z-index 계층이 그대로 P3의 이벤트 우선순위(Handle > Window > Dim)가 된다.
  *
- * ⚠️ 체크리스트 3 (가장 중요):
- * Main Chart는 margin + YAxis 폭 때문에 plot 영역이 컨테이너보다 좁다.
- * 이 Preview는 컨테이너 전체 폭 기준 %라서 Main과 시각적으로 어긋날 수 있다.
- * 어긋남을 발견하는 것이 이 테스트의 성공 조건 중 하나.
+ * 좌표계 계약 (PreviewPoint JSDoc 참고):
+ * Dim/Window/Handle은 "컨테이너 폭 기준 %"로 배치된다. 따라서 내부 차트의
+ * plot 영역이 컨테이너와 정확히 일치해야 한다 — margin 전부 0, 축 hide,
+ * XAxis domain을 fullRange로 명시. 이 계약이 깨지면 추이선과 오버레이가 어긋난다.
  */
-import type { ZoomAndPanController } from "./useZoomAndPanController";
+import type { CSSProperties } from "react";
 import { Area, AreaChart, ResponsiveContainer, XAxis } from "recharts";
+import type { ZoomAndPanController } from "./useZoomAndPanController";
 
-/**
- * controller: Hook이 반환한 객체를 통째로 받음. <ZoomAndPanPreview controller={zap} />
- */
-interface ZoomAndPanPreviewProps<T> {
+// ── 스타일 상수 (옵션화는 v1.x에서 검토 — 지금은 한곳에 모아두기만) ──
+const AREA_COLOR = "#8884d8";
+const WINDOW_COLOR = "#4f7cf7";
+const DIM_BACKGROUND = "rgba(0, 0, 0, 0.28)";
+const HANDLE_WIDTH = 8;
+/** z-index 계층 = P3의 이벤트 우선순위 (Handle > Window > Dim) */
+const Z_INDEX = { dim: 10, window: 20, handle: 30 } as const;
+
+export interface ZoomAndPanPreviewProps<T> {
+  /** useZoomAndPanController가 반환한 객체 그대로: <ZoomAndPanPreview controller={zap} /> */
   controller: ZoomAndPanController<T>;
-  /** [TEST] Preview 추이 차트에 쓸 y값 추출. 정식 API에선 별도 설계 */
-  getY: (datum: T) => number;
+  /** Preview 높이(px) */
   height?: number;
 }
 
 export function ZoomAndPanPreview<T>({
   controller,
-  getY,
   height = 64,
 }: ZoomAndPanPreviewProps<T>) {
-  const { range, fullRange } = controller;
+  const { range, fullRange, previewData } = controller;
 
   /**
-   * 전체에서 내 range가 몇 % 지점부터 몇 % 지점까지인지?
+   * range → 컨테이너 폭 기준 % 번역.
    *
-   * ex) 데이터 10개(fullRange = {0, 9}), range = {2, 6}
-   * fullSpan       = 9 - 0        = 9      (전체 폭이 인덱스로 9칸)
-   * leftPct        = (2 - 0) / 9 × 100 = 22.2%   (창의 왼쪽 끝 위치)
-   * rightPct       = (6 - 0) / 9 × 100 = 66.7%   (창의 오른쪽 끝 위치)
-   * windowWidthPct = 66.7 - 22.2       = 44.4%   (창의 폭)
+   * 전체에서 내 range가 몇 % 지점부터 몇 % 지점까지인가?
+   * ex) 데이터 10개(fullRange {0,9}), range {2,6}
+   *   fullSpan = 9, leftPct = 2/9 = 22.2%, rightPct = 6/9 = 66.7%, width = 44.4%
+   *
+   * `|| 1`: 데이터가 1개면 fullSpan이 0 → 0으로 나누면 NaN%가 되어
+   * 레이어 전체가 사라진다. 1로 대체하면 모든 pct가 0%로 수렴해 안전하다.
    */
   const fullSpan = fullRange.end - fullRange.start || 1;
   const leftPct = ((range.start - fullRange.start) / fullSpan) * 100;
   const rightPct = ((range.end - fullRange.start) / fullSpan) * 100;
   const windowWidthPct = rightPct - leftPct;
-
-  /**
-   * 차트용 데이터 반환
-   * [TEST] Preview는 항상 전체 데이터(controller.data). Bucket Index를 __rangeX 숫자축으로 사용.
-   *      TODO: 정규화 __rangeX를 포함한 previewData 정식 설계는 P2-⑨(Preview 정적 UI)에서.
-   */
-  const previewData = controller.data.map((datum, index) => ({
-    __rangeX: index,
-    __y: getY(datum),
-  }));
 
   return (
     <div
@@ -63,26 +60,31 @@ export function ZoomAndPanPreview<T>({
         userSelect: "none",
       }}
     >
-      {/* Preview 추이 차트 (전체 데이터) — z-index 0 */}
+      {/* 추이 차트 (전체 데이터) — 좌표계 계약: margin 0 + 축 hide + domain 명시 */}
       <div style={{ position: "absolute", inset: 0 }}>
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart
             data={previewData}
             margin={{ top: 0, right: 0, bottom: 0, left: 0 }}
           >
-            <XAxis dataKey="__rangeX" type="number" hide />
+            <XAxis
+              type="number"
+              dataKey="__rangeX"
+              domain={[fullRange.start, fullRange.end]}
+              hide
+            />
             <Area
               dataKey="__y"
               isAnimationActive={false}
-              stroke="#8884d8"
-              fill="#8884d8"
+              stroke={AREA_COLOR}
+              fill={AREA_COLOR}
               fillOpacity={0.25}
             />
           </AreaChart>
         </ResponsiveContainer>
       </div>
 
-      {/* Left Dim — z-index 10 */}
+      {/* Left Dim — Window 왼쪽의 흐린 영역 (컨테이너 왼쪽 끝 ~ Window 시작점) */}
       <div
         style={{
           position: "absolute",
@@ -90,11 +92,12 @@ export function ZoomAndPanPreview<T>({
           bottom: 0,
           left: 0,
           width: `${leftPct}%`,
-          background: "rgba(0,0,0,0.28)",
-          zIndex: 10,
+          background: DIM_BACKGROUND,
+          zIndex: Z_INDEX.dim,
         }}
       />
-      {/* Right Dim — z-index 10 */}
+
+      {/* Right Dim — left와 right를 동시에 못 박아 폭이 자동 계산된다 */}
       <div
         style={{
           position: "absolute",
@@ -102,11 +105,12 @@ export function ZoomAndPanPreview<T>({
           bottom: 0,
           left: `${rightPct}%`,
           right: 0,
-          background: "rgba(0,0,0,0.28)",
-          zIndex: 10,
+          background: DIM_BACKGROUND,
+          zIndex: Z_INDEX.dim,
         }}
       />
-      {/* Window — z-index 20 */}
+
+      {/* Window — 현재 보이는 구간. border-box: 테두리가 폭을 밖으로 밀지 않게 */}
       <div
         style={{
           position: "absolute",
@@ -114,45 +118,44 @@ export function ZoomAndPanPreview<T>({
           bottom: 0,
           left: `${leftPct}%`,
           width: `${windowWidthPct}%`,
-          border: "1px solid #4f7cf7",
+          border: `1px solid ${WINDOW_COLOR}`,
           boxSizing: "border-box",
-          zIndex: 20,
+          zIndex: Z_INDEX.window,
         }}
       />
-      {/* Left Handle — z-index 30 (조작 없음) */}
+
+      {/* Handle — button: P3 포커스·접근성 대비. 정적 단계라 onClick은 아직 없다 */}
       <button
         type="button"
-        aria-label="range start handle (test: not interactive)"
-        style={{
-          position: "absolute",
-          top: 0,
-          bottom: 0,
-          left: `calc(${leftPct}% - 4px)`,
-          width: 8,
-          padding: 0,
-          border: "none",
-          background: "#4f7cf7",
-          cursor: "ew-resize",
-          zIndex: 30,
-        }}
+        aria-label="range start handle"
+        style={handleStyle(leftPct)}
       />
-      {/* Right Handle — z-index 30 (조작 없음) */}
       <button
         type="button"
-        aria-label="range end handle (test: not interactive)"
-        style={{
-          position: "absolute",
-          top: 0,
-          bottom: 0,
-          left: `calc(${rightPct}% - 4px)`,
-          width: 8,
-          padding: 0,
-          border: "none",
-          background: "#4f7cf7",
-          cursor: "ew-resize",
-          zIndex: 30,
-        }}
+        aria-label="range end handle"
+        style={handleStyle(rightPct)}
       />
     </div>
   );
+}
+
+/**
+ * Handle 공통 스타일 — 좌우는 위치(pct)만 다르다.
+ * calc: 핸들의 "중심"이 경계선 위에 오도록 폭의 절반만큼 왼쪽으로 보정.
+ * (양 끝 range에서 절반이 컨테이너 밖으로 나가는 것은 정적 단계에서 수용,
+ *  히트 영역을 잡는 P3에서 재검토)
+ */
+function handleStyle(pct: number): CSSProperties {
+  return {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: `calc(${pct}% - ${HANDLE_WIDTH / 2}px)`,
+    width: HANDLE_WIDTH,
+    padding: 0,
+    border: "none",
+    background: WINDOW_COLOR,
+    cursor: "ew-resize",
+    zIndex: Z_INDEX.handle,
+  };
 }

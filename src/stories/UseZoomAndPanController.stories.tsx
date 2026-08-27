@@ -20,8 +20,11 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { useZoomAndPanController, type Range } from "../recharts";
-import { ZoomAndPanPreview } from "../recharts/ZoomAndPanPreview";
+import {
+  useZoomAndPanController,
+  ZoomAndPanPreview,
+  type Range,
+} from "../recharts";
 
 // ── 실험 데이터: 10개 (A~J) ──────────────
 interface Datum {
@@ -57,6 +60,7 @@ function ZoomAndPanChart({ defaultRange }: { defaultRange: Range }) {
     data: DATA,
     rangeMode: "bucket",
     getX: (d) => d.country, // d가 Datum으로 추론되는지 (스파이크 체크리스트 5 유지)
+    getY: (d) => d.value, // Preview 추이 y값
     defaultRange,
   });
 
@@ -74,8 +78,8 @@ function ZoomAndPanChart({ defaultRange }: { defaultRange: Range }) {
         </ResponsiveContainer>
       </div>
 
-      {/* Preview — 정식 UI는 P2-⑨에서 */}
-      <ZoomAndPanPreview controller={zap} getY={(d) => d.value} />
+      {/* Preview */}
+      <ZoomAndPanPreview controller={zap} />
 
       {/* 완료 기준 1: 버튼으로 range 변경 → Main Chart 갱신 */}
       <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
