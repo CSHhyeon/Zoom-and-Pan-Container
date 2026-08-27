@@ -38,10 +38,20 @@ export interface UseZoomAndPanControllerOptions<T, TX = unknown> {
   rangeMode?: "bucket";
   /**
    * 한 행에서 x값을 뽑는 함수.
-   * 뼈대 단계에서는 아직 소비하지 않는다 — Preview 축(P2-⑨),
-   * Snap·RangeSnapshot 경계값(P3-⑫)이 normalizeBucket과 함께 사용한다.
+   * 뼈대 단계에서는 아직 소비하지 않는다 — Snap·RangeSnapshot 경계값(P3-⑫),
+   * Handle Tooltip이 normalizeBucket과 함께 사용한다.
+   * (Bucket 모드의 Preview 축은 배열 index 자체이므로 getX가 필요 없다)
    */
   getX: (datum: T, index: number) => TX;
+  /**
+   * 한 행에서 Preview 추이 차트에 그릴 y값을 뽑는 함수.
+   *
+   * Preview는 라이브러리 소유 UI이므로 그릴 값을 hook이 알아야 한다.
+   * 사용자가 이미 controller를 넘기는데 Preview에 getY를 또 넘기는 것은 어색하고,
+   * 향후 Y Auto Scale(v1.x)도 같은 추출 함수를 쓰므로 옵션 계층에 둔다.
+   * 생략 시 Preview는 추이 없이 Dim/Window/Handle만 그린다.
+   */
+  getY?: (datum: T, index: number) => number;
   /**
    * 초기 Range (Uncontrolled). 최초 mount에만 반영되고 이후 변경은 무시된다.
    * 생략 시 전체 범위에서 시작한다.
@@ -49,6 +59,24 @@ export interface UseZoomAndPanControllerOptions<T, TX = unknown> {
   defaultRange?: Range;
   /** 최소 범위 폭(`end - start`). 생략 시 core 기본값(1 = 최소 두 포인트) */
   minRange?: number;
+}
+
+/**
+ * Preview 추이 차트가 소비하는 한 포인트.
+ *
+ * Preview의 좌표계 계약:
+ * - X는 정규화 숫자축 `__rangeX`를 쓴다 (Bucket 모드에서는 배열 index와 같다).
+ *   Preview는 `XAxis type="number"` + `domain={[fullRange.start, fullRange.end]}`로
+ *   그려야 첫·마지막 포인트가 정확히 0%·100%에 앉는다.
+ * - 차트 margin은 상하좌우 전부 0이고 축은 hide여야 한다.
+ *   Dim/Window/Handle은 컨테이너 폭 기준 %로 배치되므로, plot 영역이 컨테이너보다
+ *   좁아지는 순간(margin·축 표시) 오버레이와 추이선이 어긋난다.
+ */
+export interface PreviewPoint {
+  /** 정규화 X 위치 — Bucket 모드에서는 데이터 배열 index */
+  __rangeX: number;
+  /** getY가 돌려준 y값. getY 미제공 시 0 */
+  __y: number;
 }
 
 export interface ZoomAndPanController<T> {
@@ -64,8 +92,16 @@ export interface ZoomAndPanController<T> {
    * 이후 조작 기능(Handle Resize·Window Pan·Wheel Zoom·Drag Pan)도 전부 이 함수로 상태를 바꾼다.
    */
   setRange: (next: Range) => void;
-  /** 원본 전체 데이터 — Preview가 전체 추이를 그릴 때 사용 */
+  /** 원본 전체 데이터 — 사용자가 index로 원본 datum을 되찾을 때 사용 */
   data: readonly T[];
+  /**
+   * Preview 추이 차트용 전체 데이터.
+   *
+   * Bucket 모드의 Preview X축은 배열 index 자체이므로 `__rangeX = index`다.
+   * range가 아니라 data에만 의존해 계산되므로, 드래그로 range가 초당 수십 번
+   * 바뀌어도 배열 참조가 유지된다 → Recharts가 추이 차트를 다시 그리지 않는다.
+   */
+  previewData: PreviewPoint[];
   /** Main Chart wrapper div에 스프레드할 이벤트 props. P4(Wheel Zoom·Drag Pan)에서 이벤트가 채워진다 */
   mainProps: React.HTMLAttributes<HTMLDivElement>;
   /** YAxis domain — Y Auto/Fixed는 v1.x. 지금은 항상 undefined(Recharts 오토스케일) */
@@ -79,7 +115,7 @@ export interface ZoomAndPanController<T> {
 export function useZoomAndPanController<T, TX = unknown>(
   options: UseZoomAndPanControllerOptions<T, TX>,
 ): ZoomAndPanController<T> {
-  const { data, defaultRange, minRange } = options;
+  const { data, defaultRange, minRange, getY } = options;
 
   const constraints = useMemo<RangeConstraints>(
     () => ({
@@ -122,6 +158,24 @@ export function useZoomAndPanController<T, TX = unknown>(
     [data, range],
   );
 
+  /**
+   * Preview 추이 데이터 — range와 무관하게 data·getY에만 의존한다.
+   * 덕분에 Handle을 드래그해 range가 초당 수십 번 바뀌어도 배열 참조가 유지되고,
+   * Preview 추이 차트는 다시 계산되지 않는다.
+   *
+   * 단, getY를 인라인 함수(`getY: (d) => d.value`)로 넘기면 매 렌더 새 함수가 되어
+   * 이 memo가 무효화된다. 대용량 데이터에서는 useCallback으로 고정하거나
+   * 컴포넌트 밖에 선언할 것을 권장한다.
+   */
+  const previewData = useMemo<PreviewPoint[]>(
+    () =>
+      data.map((datum, index) => ({
+        __rangeX: index,
+        __y: getY?.(datum, index) ?? 0,
+      })),
+    [data, getY],
+  );
+
   // P4-⑮ Wheel Zoom · P4-⑯ Drag Pan이 여기에 이벤트를 추가한다.
   // 사용자는 처음부터 {...zap.mainProps}로 감싸두면 이후 기능이 코드 수정 없이 켜진다.
   const mainProps = useMemo<React.HTMLAttributes<HTMLDivElement>>(
@@ -135,6 +189,7 @@ export function useZoomAndPanController<T, TX = unknown>(
     fullRange: constraints.fullRange,
     setRange,
     data,
+    previewData,
     mainProps,
     yDomain: undefined, // Y Auto/Fixed는 v1.x
     tooltipActive: undefined, // Drag 중 Tooltip 숨김은 v1.x
