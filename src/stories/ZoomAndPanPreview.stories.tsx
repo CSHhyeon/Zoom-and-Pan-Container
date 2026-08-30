@@ -1,12 +1,17 @@
 /**
- * ZoomAndPanPreview 정적 렌더링 검증 Story (P2-⑨)
+ * ZoomAndPanPreview 검증 Story
  *
+ * [Static] 정적 렌더링 (P2-⑨)
  * 완료 기준: 버튼으로 range를 바꿀 때마다 Dim/Window/Handle이
  * "기대 위치" 표기와 정확히 일치하게 따라온다.
  *
  * 이 Story는 3단계(오버레이 레이어) 구현의 채점표다:
  * 컴포넌트 하단의 임시 % 표시와 실제 레이어 위치가 어긋나면 오버레이 구현 문제,
  * % 표시 자체가 이상하면 계산부 문제로 원인을 분리할 수 있다.
+ *
+ * [HandleResize] Left/Right Handle 드래그 (P3-⑩·⑪)
+ * 완료 기준: 반대쪽 Handle 고정 · 두 Handle 교차 불가 · 최소·최대 Window 준수
+ * · 경계 초과 금지 · Main Chart 동기 갱신
  */
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Line, LineChart, ResponsiveContainer, XAxis, YAxis } from "recharts";
@@ -142,6 +147,62 @@ function SinglePointDemo() {
   );
 }
 
+/**
+ * P3-⑩·⑪ Handle Resize 검증 (Left/Right 모두 드래그 가능).
+ *
+ * minRange를 2로 크게 잡아 "최소 폭에서 멈춤(교차 불가)"이 눈에 잘 보이게 했다.
+ */
+function HandleResizeDemo() {
+  const zap = useZoomAndPanController({
+    data: DATA,
+    rangeMode: "bucket",
+    getX: (d) => d.country,
+    getY: (d) => d.value,
+    defaultRange: { start: 2, end: 6 },
+    minRange: 2,
+  });
+
+  return (
+    <div style={{ maxWidth: 720, fontFamily: "sans-serif" }}>
+      {/* Main Chart — 완료 기준: Handle 드래그에 맞춰 같이 갱신되어야 함 */}
+      <div {...zap.mainProps}>
+        <ResponsiveContainer width="100%" height={240}>
+          <LineChart data={zap.visibleData}>
+            <XAxis dataKey="country" />
+            <YAxis domain={zap.yDomain} />
+            <Line dataKey="value" stroke="#4f7cf7" isAnimationActive={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+
+      <ZoomAndPanPreview controller={zap} />
+
+      <p style={{ color: "#666", fontSize: 12 }}>
+        현재 range: {zap.range.start} ~ {zap.range.end} (minRange 2)
+      </p>
+
+      {/* 완료 기준 체크리스트 — 양쪽 Handle을 각각 드래그하며 하나씩 확인 */}
+      <ul style={{ color: "#666", fontSize: 12, paddingLeft: 16 }}>
+        <li>
+          Left Handle 드래그 → start만 움직이고 end(Right Handle)는 고정이다.
+          반대 방향도 동일
+        </li>
+        <li>
+          두 Handle은 교차 불가 — 서로를 향해 끝까지 끌어도 폭이 2(minRange)에서
+          멈춘다
+        </li>
+        <li>바깥으로 끝까지 끌어도 start는 0, end는 9를 넘지 않는다</li>
+        <li>드래그에 맞춰 Main Chart가 같이 갱신된다</li>
+        <li>
+          드래그 중 포인터가 Preview 밖으로 나가도 계속 따라온다
+          (setPointerCapture)
+        </li>
+        <li>Handle이 Bucket 단위로 딱딱 끊어져 이동한다 (snap)</li>
+      </ul>
+    </div>
+  );
+}
+
 const meta: Meta<typeof PreviewStaticDemo> = {
   title: "Preview/ZoomAndPanPreview",
   component: PreviewStaticDemo,
@@ -154,4 +215,8 @@ export const Static: Story = {};
 
 export const SinglePoint: Story = {
   render: () => <SinglePointDemo />,
+};
+
+export const HandleResize: Story = {
+  render: () => <HandleResizeDemo />,
 };
