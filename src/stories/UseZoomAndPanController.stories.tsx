@@ -2,13 +2,18 @@
  * useZoomAndPanController 뼈대 검증 Story
  * (API Skeleton 스파이크를 hook 기반으로 교체)
  *
- * 완료 기준:
+ * [Uncontrolled] 완료 기준:
  * 1. 버튼으로 range를 바꾸면 Main Chart가 갱신된다 (preset 버튼)
  * 2. defaultRange prop이 나중에 바뀌어도 range가 초기화되지 않는다
  *    ("defaultRange 변경" 버튼을 눌러도 차트 range 유지)
  *
  * 추가 관찰 포인트: 잘못된 range를 넣어도 clampRange 단일 관문이 보정한다
  * (경계 초과 → 폭 유지 평행이동, 최소 폭 미달 → end 확장)
+ *
+ * [Callbacks] onRangeChange · onRangeCommit (P3-⑫) 완료 기준:
+ * - Handle Drag 중 Change가 연속 출력된다 (rAF throttle — 프레임당 최대 1회)
+ * - Pointer Up 시 Commit이 정확히 1회 출력된다
+ * - 클릭만 하고 안 움직이면 Commit이 호출되지 않는다
  */
 import { useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
@@ -24,6 +29,8 @@ import {
   useZoomAndPanController,
   ZoomAndPanPreview,
   type Range,
+  type RangeChangeMeta,
+  type RangeSnapshot,
 } from "../recharts";
 
 // ── 실험 데이터: 10개 (A~J) ──────────────
@@ -139,6 +146,75 @@ function UncontrolledDemo() {
   );
 }
 
+/** 콜백 페이로드를 화면 표시용 한 줄로 */
+function formatPayload(snapshot: RangeSnapshot, meta: RangeChangeMeta): string {
+  return `range ${snapshot.range.start}~${snapshot.range.end} (source: ${meta.source})`;
+}
+
+/**
+ * P3-⑫ 콜백 검증. Handle을 드래그하며 카운터를 관찰한다:
+ * - Change: 드래그 중 연속 증가 (프레임당 최대 1회)
+ * - Commit: Pointer Up마다 +1, 단 range가 실제로 바뀐 드래그만
+ */
+function CallbacksDemo() {
+  const [changeCount, setChangeCount] = useState(0);
+  const [commitCount, setCommitCount] = useState(0);
+  const [lastChange, setLastChange] = useState("아직 없음");
+  const [lastCommit, setLastCommit] = useState("아직 없음");
+
+  const zap = useZoomAndPanController({
+    data: DATA,
+    rangeMode: "bucket",
+    getX: (d) => d.country,
+    getY: (d) => d.value,
+    defaultRange: { start: 2, end: 6 },
+    onRangeChange: (snapshot, meta) => {
+      console.log("[story] onRangeChange", snapshot.range, meta.source);
+      setChangeCount((count) => count + 1);
+      setLastChange(formatPayload(snapshot, meta));
+    },
+    onRangeCommit: (snapshot, meta) => {
+      console.log("[story] onRangeCommit", snapshot.range, meta.source);
+      setCommitCount((count) => count + 1);
+      setLastCommit(formatPayload(snapshot, meta));
+    },
+  });
+
+  return (
+    <div style={{ maxWidth: 720, fontFamily: "sans-serif" }}>
+      <div {...zap.mainProps}>
+        <ResponsiveContainer width="100%" height={240}>
+          <LineChart data={zap.visibleData}>
+            <XAxis dataKey="country" />
+            <YAxis domain={zap.yDomain} />
+            <Line dataKey="value" stroke="#4f7cf7" isAnimationActive={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+
+      <ZoomAndPanPreview controller={zap} />
+
+      <p style={{ fontSize: 13 }}>
+        <strong>onRangeChange {changeCount}회</strong> — 마지막: {lastChange}
+        <br />
+        <strong>onRangeCommit {commitCount}회</strong> — 마지막: {lastCommit}
+      </p>
+
+      {/* 완료 기준 체크리스트 — 콘솔 로그로도 동일하게 출력된다 */}
+      <ul style={{ color: "#666", fontSize: 12, paddingLeft: 16 }}>
+        <li>Handle 드래그 중 Change가 연속 증가한다 (프레임당 최대 1회)</li>
+        <li>드래그를 놓는 순간 Commit이 정확히 1만 늘어난다</li>
+        <li>Handle을 클릭만 하고 안 움직이면 Change·Commit 모두 그대로다</li>
+        <li>드래그로 움직였다가 제자리에 돌려놓고 놓아도 Commit은 그대로다</li>
+        <li>
+          setRange 버튼(Uncontrolled Story)과 달리 프로그램적 변경은 콜백을
+          부르지 않는다
+        </li>
+      </ul>
+    </div>
+  );
+}
+
 const meta: Meta<typeof UncontrolledDemo> = {
   title: "Hook/useZoomAndPanController",
   component: UncontrolledDemo,
@@ -148,3 +224,7 @@ export default meta;
 type Story = StoryObj<typeof UncontrolledDemo>;
 
 export const Uncontrolled: Story = {};
+
+export const Callbacks: Story = {
+  render: () => <CallbacksDemo />,
+};
