@@ -9,8 +9,9 @@
  * 컴포넌트 하단의 임시 % 표시와 실제 레이어 위치가 어긋나면 오버레이 구현 문제,
  * % 표시 자체가 이상하면 계산부 문제로 원인을 분리할 수 있다.
  *
- * [RightHandleResize] Right Handle 드래그 (P3-⑩)
- * 완료 기준: Left(start) 고정 · 최소 폭 유지 · 오른쪽 끝 초과 금지 · Main Chart 동기 갱신
+ * [HandleResize] Left/Right Handle 드래그 (P3-⑩·⑪)
+ * 완료 기준: 반대쪽 Handle 고정 · 두 Handle 교차 불가 · 최소·최대 Window 준수
+ * · 경계 초과 금지 · Main Chart 동기 갱신
  */
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Line, LineChart, ResponsiveContainer, XAxis, YAxis } from "recharts";
@@ -147,12 +148,11 @@ function SinglePointDemo() {
 }
 
 /**
- * P3-⑩ Right Handle Resize 검증.
+ * P3-⑩·⑪ Handle Resize 검증 (Left/Right 모두 드래그 가능).
  *
- * minRange를 2로 크게 잡아 "최소 폭에서 멈춤"이 눈에 잘 보이게 했다
- * (start 2 고정이므로 end의 하한은 4).
+ * minRange를 2로 크게 잡아 "최소 폭에서 멈춤(교차 불가)"이 눈에 잘 보이게 했다.
  */
-function RightHandleDemo() {
+function HandleResizeDemo() {
   const zap = useZoomAndPanController({
     data: DATA,
     rangeMode: "bucket",
@@ -178,21 +178,21 @@ function RightHandleDemo() {
       <ZoomAndPanPreview controller={zap} />
 
       <p style={{ color: "#666", fontSize: 12 }}>
-        현재 range: {zap.range.start} ~ {zap.range.end} (start 2 고정 · minRange
-        2)
+        현재 range: {zap.range.start} ~ {zap.range.end} (minRange 2)
       </p>
 
-      {/* 완료 기준 체크리스트 — 오른쪽 Handle을 드래그하며 하나씩 확인 */}
+      {/* 완료 기준 체크리스트 — 양쪽 Handle을 각각 드래그하며 하나씩 확인 */}
       <ul style={{ color: "#666", fontSize: 12, paddingLeft: 16 }}>
         <li>
-          Right Handle 드래그 → Window 오른쪽 경계만 움직이고 Main Chart가 같이
-          바뀐다
+          Left Handle 드래그 → start만 움직이고 end(Right Handle)는 고정이다.
+          반대 방향도 동일
         </li>
-        <li>Left Handle과 start(2)는 고정이다 (Left 드래그는 P3-⑪에서)</li>
         <li>
-          왼쪽 끝까지 끌어도 end는 4(start + minRange) 아래로 내려가지 않는다
+          두 Handle은 교차 불가 — 서로를 향해 끝까지 끌어도 폭이 2(minRange)에서
+          멈춘다
         </li>
-        <li>오른쪽 끝까지 끌어도 end는 9를 넘지 않는다</li>
+        <li>바깥으로 끝까지 끌어도 start는 0, end는 9를 넘지 않는다</li>
+        <li>드래그에 맞춰 Main Chart가 같이 갱신된다</li>
         <li>
           드래그 중 포인터가 Preview 밖으로 나가도 계속 따라온다
           (setPointerCapture)
@@ -217,6 +217,6 @@ export const SinglePoint: Story = {
   render: () => <SinglePointDemo />,
 };
 
-export const RightHandleResize: Story = {
-  render: () => <RightHandleDemo />,
+export const HandleResize: Story = {
+  render: () => <HandleResizeDemo />,
 };

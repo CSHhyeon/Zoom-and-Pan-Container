@@ -34,10 +34,11 @@ export function ZoomAndPanPreview<T>({
   controller,
   height = 64,
 }: ZoomAndPanPreviewProps<T>) {
-  const { range, fullRange, previewData, resizeRight } = controller;
+  const { range, fullRange, previewData, resizeLeft, resizeRight } = controller;
 
   /** 픽셀 → % → Position 번역의 기준이 되는 레이어 컨테이너 */
   const containerRef = useRef<HTMLDivElement>(null);
+  const leftHandleDrag = useHandleDrag(containerRef, fullRange, resizeLeft);
   const rightHandleDrag = useHandleDrag(containerRef, fullRange, resizeRight);
 
   /**
@@ -124,11 +125,12 @@ export function ZoomAndPanPreview<T>({
         }}
       />
 
-      {/* Left Handle — 아직 고정 (드래그 미구현) */}
+      {/* Left Handle — 드래그로 start만 이동 */}
       <button
         type="button"
         aria-label="range start handle"
         style={handleStyle(leftPct)}
+        {...leftHandleDrag}
       />
       {/* Right Handle — 드래그로 end만 이동 */}
       <button

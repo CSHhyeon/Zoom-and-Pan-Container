@@ -9,6 +9,7 @@ import { useCallback, useMemo, useState } from "react";
 import type React from "react";
 import {
   clampRange,
+  resizeLeftRange,
   resizeRightRange,
   type Range,
   type RangeConstraints,
@@ -77,6 +78,12 @@ export interface ZoomAndPanController<T> {
   /** Range 변경의 외부 진입점. 어떤 값이 와도 core clampRange를 거쳐 보정된다 */
   setRange: (next: Range) => void;
   /**
+   * Left Handle Resize — end는 고정하고 start만 nextStart로 옮긴다.
+   * nextStart는 Bucket Position(소수 가능). 반올림 snap 후 core resizeLeftRange를
+   * 거치므로 최소 폭(`end - minRange`)과 왼쪽 경계(`fullRange.start`)를 넘지 않는다.
+   */
+  resizeLeft: (nextStart: number) => void;
+  /**
    * Right Handle Resize — start는 고정하고 end만 nextEnd로 옮긴다.
    * nextEnd는 Bucket Position(소수 가능). 반올림 snap 후 core resizeRightRange를
    * 거치므로 최소 폭(`start + minRange`)과 오른쪽 경계(`fullRange.end`)를 넘지 않는다.
@@ -142,22 +149,35 @@ export function useZoomAndPanController<T, TX = unknown>(
   const setRange = useCallback((next: Range) => setRawRange(next), []);
 
   /**
-   * Right Handle 드래그가 pointermove마다 호출한다.
+   * 조작 연산(Handle Resize 등)의 공통 규칙으로 range를 갱신한다.
    * - 함수형 업데이트: move가 리렌더보다 촘촘해도 항상 최신 상태 기준으로 계산
-   * - snap(반올림) 후에도 range가 그대로면 이전 참조를 반환해 리렌더를 건너뛴다
+   * - 결과가 그대로면 이전 참조를 반환해 리렌더 자체를 건너뛴다
    */
-  const resizeRight = useCallback(
-    (nextEnd: number) =>
+  const applyRangeOperation = useCallback(
+    (compute: (current: Range) => Range) =>
       setRawRange((prev) => {
         const current = resolveRange(prev);
-        const next = resizeRightRange(
-          current,
-          Math.round(nextEnd),
-          constraints,
-        );
+        const next = compute(current);
         return isSameRange(next, current) ? prev : next;
       }),
-    [resolveRange, constraints],
+    [resolveRange],
+  );
+
+  // Handle 드래그가 pointermove마다 호출한다. Math.round = Bucket snap.
+  const resizeLeft = useCallback(
+    (nextStart: number) =>
+      applyRangeOperation((current) =>
+        resizeLeftRange(current, Math.round(nextStart), constraints),
+      ),
+    [applyRangeOperation, constraints],
+  );
+
+  const resizeRight = useCallback(
+    (nextEnd: number) =>
+      applyRangeOperation((current) =>
+        resizeRightRange(current, Math.round(nextEnd), constraints),
+      ),
+    [applyRangeOperation, constraints],
   );
 
   /**
@@ -196,6 +216,7 @@ export function useZoomAndPanController<T, TX = unknown>(
     range,
     fullRange: constraints.fullRange,
     setRange,
+    resizeLeft,
     resizeRight,
     data,
     previewData,
