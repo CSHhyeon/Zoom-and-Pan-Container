@@ -51,6 +51,17 @@ export interface NormalizedPoint<TX = unknown> {
 export const DEFAULT_MIN_RANGE = 1;
 
 /**
+ * 두 Range가 같은 구간을 가리키는지 값으로 비교한다.
+ *
+ * 조작 연산의 "변화 없음" 감지(불필요한 리렌더 스킵)와
+ * onRangeCommit의 "Range가 실제 변경된 경우에만 호출" 규칙이 공유하는 기준.
+ * (NaN이 섞인 Range는 항상 "다름"이지만, NaN은 clampRange 관문이 걸러낸 뒤라 실사용에선 오지 않는다)
+ */
+export function isSameRange(a: Range, b: Range): boolean {
+  return a.start === b.start && a.end === b.end;
+}
+
+/**
  * 모든 Range 연산(clamp/zoom/pan/resize)이 공통으로 받는 제약.
  */
 export interface RangeConstraints {

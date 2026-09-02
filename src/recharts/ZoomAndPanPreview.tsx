@@ -9,7 +9,7 @@
  * 드래그는 "픽셀 → Bucket Position 번역"까지만 담당하고(useHandleDrag),
  * snap·최소 폭·경계 보정은 controller → core의 몫이다.
  */
-import { useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import type { CSSProperties, DOMAttributes, RefObject } from "react";
 import { Area, AreaChart, ResponsiveContainer, XAxis } from "recharts";
 import type { Range } from "../core";
@@ -34,12 +34,39 @@ export function ZoomAndPanPreview<T>({
   controller,
   height = 64,
 }: ZoomAndPanPreviewProps<T>) {
-  const { range, fullRange, previewData, resizeLeft, resizeRight } = controller;
+  const {
+    range,
+    fullRange,
+    previewData,
+    resizeLeft,
+    resizeRight,
+    beginInteraction,
+    endInteraction,
+  } = controller;
 
   /** 픽셀 → % → Position 번역의 기준이 되는 레이어 컨테이너 */
   const containerRef = useRef<HTMLDivElement>(null);
-  const leftHandleDrag = useHandleDrag(containerRef, fullRange, resizeLeft);
-  const rightHandleDrag = useHandleDrag(containerRef, fullRange, resizeRight);
+
+  // 조작 세션 시작을 source와 함께 hook에 알린다 (commit의 비교 기준이 됨)
+  const beginLeftResize = useCallback(
+    () => beginInteraction("resize-left"),
+    [beginInteraction],
+  );
+  const beginRightResize = useCallback(
+    () => beginInteraction("resize-right"),
+    [beginInteraction],
+  );
+
+  const leftHandleDrag = useHandleDrag(containerRef, fullRange, {
+    onDragTo: resizeLeft,
+    onDragStart: beginLeftResize,
+    onDragEnd: endInteraction,
+  });
+  const rightHandleDrag = useHandleDrag(containerRef, fullRange, {
+    onDragTo: resizeRight,
+    onDragStart: beginRightResize,
+    onDragEnd: endInteraction,
+  });
 
   /**
    * range → 컨테이너 폭 기준 % 번역.
@@ -179,6 +206,16 @@ interface DragSession {
   rect: DOMRect;
 }
 
+/** Handle 드래그의 수신자 — 번역된 위치와 드래그 생명주기를 받는다 */
+interface HandleDragCallbacks {
+  /** 번역된 Bucket Position — pointermove마다 호출 */
+  onDragTo: (position: number) => void;
+  /** 드래그 시작 (pointerdown, 캡처 직후) */
+  onDragStart?: () => void;
+  /** 드래그 종료 — up/cancel 어느 경로로 끝나든 정확히 1회 */
+  onDragEnd?: () => void;
+}
+
 /**
  * Handle 드래그를 "픽셀 → Bucket Position 번역"까지만 담당하는 내부 hook.
  * 반환한 이벤트 props를 Handle button에 스프레드한다.
@@ -189,11 +226,12 @@ interface DragSession {
 function useHandleDrag(
   containerRef: RefObject<HTMLDivElement | null>,
   fullRange: Range,
-  onDragTo: (position: number) => void,
+  { onDragTo, onDragStart, onDragEnd }: HandleDragCallbacks,
 ): DOMAttributes<HTMLButtonElement> {
   const sessionRef = useRef<DragSession | null>(null);
 
   // 핸들러 묶음의 참조를 고정해 button이 매 렌더 새 props를 받지 않게 한다.
+  // (콜백 묶음 객체는 매 렌더 새로 만들어지므로 개별 함수를 deps로 쓴다)
   return useMemo<DOMAttributes<HTMLButtonElement>>(
     () => ({
       onPointerDown: (event) => {
@@ -210,6 +248,7 @@ function useHandleDrag(
           pointerId: event.pointerId,
           rect: container.getBoundingClientRect(),
         };
+        onDragStart?.();
       },
 
       onPointerMove: (event) => {
@@ -222,12 +261,15 @@ function useHandleDrag(
         onDragTo(fullRange.start + ratio * (fullRange.end - fullRange.start));
       },
 
-      // 드래그 종료를 한 곳으로 수렴: 캡처된 포인터는 up/cancel 시
-      // 자동으로 캡처가 풀리며 이 이벤트가 항상 발생한다.
+      // 드래그 종료를 한 곳으로 수렴: 캡처된 포인터는 up/cancel 시 자동으로
+      // 캡처가 풀리며 이 이벤트가 항상 발생한다. 세션이 있을 때만 종료 처리하므로
+      // pointerup과 겹쳐 들어와도 onDragEnd는 드래그당 1회만 나간다.
       onLostPointerCapture: () => {
+        if (sessionRef.current === null) return;
         sessionRef.current = null;
+        onDragEnd?.();
       },
     }),
-    [containerRef, fullRange, onDragTo],
+    [containerRef, fullRange, onDragTo, onDragStart, onDragEnd],
   );
 }

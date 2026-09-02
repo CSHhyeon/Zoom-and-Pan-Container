@@ -4,6 +4,9 @@ export {
   useZoomAndPanController,
   type PreviewPoint,
   type Range,
+  type RangeChangeMeta,
+  type RangeChangeSource,
+  type RangeSnapshot,
   type UseZoomAndPanControllerOptions,
   type ZoomAndPanController,
 } from "./useZoomAndPanController";

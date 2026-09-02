@@ -5,18 +5,30 @@
  * (visibleData, previewData, 차트에 꽂을 props)을 계산해서 돌려준다.
  * UI는 그리지 않으며, 모든 Range 변경은 core clampRange 단일 관문을 통과한다.
  */
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type React from "react";
 import {
   clampRange,
+  isSameRange,
   resizeLeftRange,
   resizeRightRange,
   type Range,
   type RangeConstraints,
 } from "../core";
+import {
+  useRangeCallbacks,
+  type RangeChangeMeta,
+  type RangeChangeSource,
+  type RangeSnapshot,
+} from "./useRangeCallbacks";
 
-// 사용자가 defaultRange 등을 작성할 때 필요한 타입을 hook과 같은 곳에서 제공한다.
+// 사용자가 defaultRange·콜백 시그니처를 작성할 때 필요한 타입을 hook과 같은 곳에서 제공한다.
 export type { Range } from "../core";
+export type {
+  RangeChangeMeta,
+  RangeChangeSource,
+  RangeSnapshot,
+} from "./useRangeCallbacks";
 
 //   ############## 타입 ##############
 
@@ -51,6 +63,16 @@ export interface UseZoomAndPanControllerOptions<T, TX = unknown> {
   defaultRange?: Range;
   /** 최소 범위 폭(`end - start`). 생략 시 core 기본값(1 = 최소 두 포인트) */
   minRange?: number;
+  /**
+   * 조작 중 range가 실제로 바뀔 때마다 호출 — rAF throttle로 프레임당 최대 1회.
+   * 화면 동기화용(예: 옆 차트 range 맞추기). 서버 요청은 onRangeCommit에서 할 것.
+   */
+  onRangeChange?: (snapshot: RangeSnapshot, meta: RangeChangeMeta) => void;
+  /**
+   * 한 번의 조작(Handle Drag 등)이 끝났을 때 1회 호출.
+   * 조작 시작 대비 range가 실제로 바뀐 경우에만 호출된다 — 서버 요청은 여기서.
+   */
+  onRangeCommit?: (snapshot: RangeSnapshot, meta: RangeChangeMeta) => void;
 }
 
 /**
@@ -75,8 +97,21 @@ export interface ZoomAndPanController<T> {
   range: Range;
   /** 전체 데이터 범위 */
   fullRange: Range;
-  /** Range 변경의 외부 진입점. 어떤 값이 와도 core clampRange를 거쳐 보정된다 */
+  /**
+   * Range 변경의 외부 진입점. 어떤 값이 와도 core clampRange를 거쳐 보정된다.
+   * 프로그램적 변경이므로 onRangeChange/onRangeCommit을 호출하지 않는다.
+   */
   setRange: (next: Range) => void;
+  /**
+   * 조작 세션 시작 — Preview 등이 pointerdown에 호출한다.
+   * 이 시점의 range가 onRangeCommit의 "실제 변경" 비교 기준이 된다.
+   */
+  beginInteraction: (source: RangeChangeSource) => void;
+  /**
+   * 조작 세션 종료 — pointerup/lostpointercapture에 호출한다 (중복 호출 무시).
+   * 마지막 onRangeChange를 flush한 뒤, 시작 대비 변경 시에만 onRangeCommit 1회.
+   */
+  endInteraction: () => void;
   /**
    * Left Handle Resize — end는 고정하고 start만 nextStart로 옮긴다.
    * nextStart는 Bucket Position(소수 가능). 반올림 snap 후 core resizeLeftRange를
@@ -109,7 +144,8 @@ export interface ZoomAndPanController<T> {
 export function useZoomAndPanController<T, TX = unknown>(
   options: UseZoomAndPanControllerOptions<T, TX>,
 ): ZoomAndPanController<T> {
-  const { data, defaultRange, minRange, getY } = options;
+  const { data, defaultRange, minRange, getY, onRangeChange, onRangeCommit } =
+    options;
 
   const constraints = useMemo<RangeConstraints>(
     () => ({
@@ -131,6 +167,18 @@ export function useZoomAndPanController<T, TX = unknown>(
   );
 
   /**
+   * rawRange의 동기 미러 — 반드시 updateRawRange를 통해서만 함께 갱신한다.
+   * 이벤트 핸들러(조작 연산, 세션 begin/end)는 setState가 리렌더에 반영되기
+   * 전에도 최신 값을 읽어야 하므로 state 대신 이 ref를 읽는다.
+   */
+  const rawRangeRef = useRef<Range | null>(rawRange);
+
+  const updateRawRange = useCallback((next: Range) => {
+    rawRangeRef.current = next;
+    setRawRange(next);
+  }, []);
+
+  /**
    * 모든 Range 변경 경로가 통과하는 단일 관문 (core clampRange).
    * raw 값이 어디서 왔든 여기서 한 번만 보정되므로
    * data 길이·minRange가 나중에 바뀌어도 range는 항상 유효하다.
@@ -146,27 +194,43 @@ export function useZoomAndPanController<T, TX = unknown>(
     [resolveRange, rawRange],
   );
 
-  const setRange = useCallback((next: Range) => setRawRange(next), []);
+  /** 이벤트 핸들러 전용 — 리렌더 대기 중인 변경까지 포함한 현재 유효 Range */
+  const readCurrentRange = useCallback(
+    () => resolveRange(rawRangeRef.current),
+    [resolveRange],
+  );
+
+  const setRange = useCallback(
+    (next: Range) => updateRawRange(next),
+    [updateRawRange],
+  );
+
+  const {
+    notifyChange,
+    beginInteraction: beginSession,
+    endInteraction: endSession,
+  } = useRangeCallbacks({ onRangeChange, onRangeCommit });
 
   /**
-   * 조작 연산(Handle Resize 등)의 공통 규칙으로 range를 갱신한다.
-   * - 함수형 업데이트: move가 리렌더보다 촘촘해도 항상 최신 상태 기준으로 계산
-   * - 결과가 그대로면 이전 참조를 반환해 리렌더 자체를 건너뛴다
+   * 조작 연산(Handle Resize 등)의 공통 경로.
+   * 실제로 바뀐 경우에만 상태를 쓰고(불필요한 리렌더 차단) onRangeChange를 예약한다.
+   * 콜백 호출은 부수효과라 setState updater 밖에서 처리한다 (updater는 순수해야 함).
    */
   const applyRangeOperation = useCallback(
-    (compute: (current: Range) => Range) =>
-      setRawRange((prev) => {
-        const current = resolveRange(prev);
-        const next = compute(current);
-        return isSameRange(next, current) ? prev : next;
-      }),
-    [resolveRange],
+    (source: RangeChangeSource, compute: (current: Range) => Range) => {
+      const current = readCurrentRange();
+      const next = compute(current);
+      if (isSameRange(next, current)) return;
+      updateRawRange(next);
+      notifyChange(next, source);
+    },
+    [readCurrentRange, updateRawRange, notifyChange],
   );
 
   // Handle 드래그가 pointermove마다 호출한다. Math.round = Bucket snap.
   const resizeLeft = useCallback(
     (nextStart: number) =>
-      applyRangeOperation((current) =>
+      applyRangeOperation("resize-left", (current) =>
         resizeLeftRange(current, Math.round(nextStart), constraints),
       ),
     [applyRangeOperation, constraints],
@@ -174,10 +238,20 @@ export function useZoomAndPanController<T, TX = unknown>(
 
   const resizeRight = useCallback(
     (nextEnd: number) =>
-      applyRangeOperation((current) =>
+      applyRangeOperation("resize-right", (current) =>
         resizeRightRange(current, Math.round(nextEnd), constraints),
       ),
     [applyRangeOperation, constraints],
+  );
+
+  const beginInteraction = useCallback(
+    (source: RangeChangeSource) => beginSession(source, readCurrentRange()),
+    [beginSession, readCurrentRange],
+  );
+
+  const endInteraction = useCallback(
+    () => endSession(readCurrentRange()),
+    [endSession, readCurrentRange],
   );
 
   /**
@@ -218,15 +292,12 @@ export function useZoomAndPanController<T, TX = unknown>(
     setRange,
     resizeLeft,
     resizeRight,
+    beginInteraction,
+    endInteraction,
     data,
     previewData,
     mainProps,
     yDomain: undefined,
     tooltipActive: undefined,
   };
-}
-
-/** 조작 연산이 "실제 변화 없음"을 감지해 불필요한 리렌더를 막는 데 쓴다 */
-function isSameRange(a: Range, b: Range): boolean {
-  return a.start === b.start && a.end === b.end;
 }

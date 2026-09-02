@@ -2,6 +2,7 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 
 import {
   DEFAULT_MIN_RANGE,
+  isSameRange,
   type NormalizedPoint,
   type Range,
   type RangeConstraints,
@@ -52,6 +53,22 @@ describe("core types", () => {
 
     expect(byCountry.index).toBe(0);
     expect(byTime.index).toBe(3);
+  });
+
+  it("isSameRange는 값이 같으면 참조가 달라도 같은 Range로 본다", () => {
+    expect(isSameRange({ start: 2, end: 6 }, { start: 2, end: 6 })).toBe(true);
+    expect(isSameRange({ start: 2, end: 6 }, { start: 2, end: 7 })).toBe(false);
+    expect(isSameRange({ start: 2, end: 6 }, { start: 3, end: 6 })).toBe(false);
+
+    // 소수 Position(향후 snap=false)도 값 그대로 비교한다
+    expect(
+      isSameRange({ start: 1.5, end: 4.5 }, { start: 1.5, end: 4.5 }),
+    ).toBe(true);
+
+    // NaN Range는 항상 "다름" — 단, 실사용에선 clampRange 관문이 걸러낸 뒤라 오지 않는다
+    expect(isSameRange({ start: NaN, end: 6 }, { start: NaN, end: 6 })).toBe(
+      false,
+    );
   });
 
   it("RangeConstraints는 fullRange 필수, minRange는 생략 가능", () => {
