@@ -4,11 +4,9 @@
  *
  * [Uncontrolled] 완료 기준:
  * 1. 버튼으로 range를 바꾸면 Main Chart가 갱신된다 (preset 버튼)
- * 2. defaultRange prop이 나중에 바뀌어도 range가 초기화되지 않는다
- *    ("defaultRange 변경" 버튼을 눌러도 차트 range 유지)
+ * 2. defaultRange prop이 나중에 바뀌어도 range가 초기화되지 않는다 ("defaultRange 변경" 버튼을 눌러도 차트 range 유지)
  *
- * 추가 관찰 포인트: 잘못된 range를 넣어도 clampRange 단일 관문이 보정한다
- * (경계 초과 → 폭 유지 평행이동, 최소 폭 미달 → end 확장)
+ * 추가 관찰 포인트: 잘못된 range를 넣어도 clampRange 단일 관문이 보정한다 (경계 초과 → 폭 유지 평행이동, 최소 폭 미달 → end 확장)
  *
  * [Callbacks] onRangeChange · onRangeCommit (P3-⑫) 완료 기준:
  * - Handle Drag 중 Change가 연속 출력된다 (rAF throttle — 프레임당 최대 1회)
@@ -31,7 +29,7 @@ import {
   type Range,
   type RangeChangeMeta,
   type RangeSnapshot,
-} from "../recharts";
+} from "../index";
 
 // ── 실험 데이터: 10개 (A~J) ──────────────
 interface Datum {

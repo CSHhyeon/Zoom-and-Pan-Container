@@ -9,7 +9,13 @@
     "rootDir": "./src",
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.build.tsbuildinfo"
   },
-  "include": ["src/index.ts", "src/core", "src/recharts"],
+  "include": [
+    "src/index.ts",
+    "src/shared",
+    "src/entities",
+    "src/features",
+    "src/widgets"
+  ],
   "exclude": [
     "**/*.test.ts",
     "**/*.test.tsx",

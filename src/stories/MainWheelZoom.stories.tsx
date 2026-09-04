@@ -7,13 +7,12 @@
  * - Preview Window가 실시간 동기화
  * - Wheel 종료 후 Commit 1회만 호출 (150ms debounce)
  *
- * 페이지를 일부러 길게 만들었다 — 차트 위에서 휠은 Zoom만 되고(스크롤 차단),
- * 차트 밖에서는 평소처럼 페이지가 스크롤되어야 한다 (preventDefault 검증).
+ * 페이지를 일부러 길게 만들었다 — 차트 위에서 휠은 Zoom만 되고(스크롤 차단), 차트 밖에서는 평소처럼 페이지가 스크롤되어야 한다 (preventDefault 검증).
  */
 import { useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Line, LineChart, ResponsiveContainer, XAxis, YAxis } from "recharts";
-import { useZoomAndPanController, ZoomAndPanPreview } from "../recharts";
+import { useZoomAndPanController, ZoomAndPanPreview } from "../index";
 
 // ── 실험 데이터: 20개 — 줌 단계가 충분히 나오도록 A~T ──
 const DATA = Array.from({ length: 20 }, (_, index) => ({

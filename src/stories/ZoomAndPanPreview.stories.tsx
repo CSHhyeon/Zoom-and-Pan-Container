@@ -2,24 +2,19 @@
  * ZoomAndPanPreview 검증 Story
  *
  * [Static] 정적 렌더링 (P2-⑨)
- * 완료 기준: 버튼으로 range를 바꿀 때마다 Dim/Window/Handle이
- * "기대 위치" 표기와 정확히 일치하게 따라온다.
+ * 완료 기준: 버튼으로 range를 바꿀 때마다 Dim/Window/Handle이 "기대 위치" 표기와 정확히 일치하게 따라온다.
  *
  * 이 Story는 3단계(오버레이 레이어) 구현의 채점표다:
- * 컴포넌트 하단의 임시 % 표시와 실제 레이어 위치가 어긋나면 오버레이 구현 문제,
- * % 표시 자체가 이상하면 계산부 문제로 원인을 분리할 수 있다.
+ * 컴포넌트 하단의 임시 % 표시와 실제 레이어 위치가 어긋나면 오버레이 구현 문제, % 표시 자체가 이상하면 계산부 문제로 원인을 분리할 수 있다.
  *
  * [HandleResize] Left/Right Handle 드래그 (P3-⑩·⑪)
- * 완료 기준: 반대쪽 Handle 고정 · 두 Handle 교차 불가 · 최소·최대 Window 준수
- * · 경계 초과 금지 · Main Chart 동기 갱신
+ * 완료 기준: 반대쪽 Handle 고정 · 두 Handle 교차 불가 · 최소·최대 Window 준수 · 경계 초과 금지 · Main Chart 동기 갱신
  *
  * [WindowPan] Window 드래그 이동 (P3-⑬)
- * 완료 기준: 폭 유지·양쪽 Handle 동시 이동 · 전체 범위 경계 준수
- * · Handle Drag와 혼동되지 않음 (이벤트 우선순위 Handle > Window)
+ * 완료 기준: 폭 유지·양쪽 Handle 동시 이동 · 전체 범위 경계 준수 · Handle Drag와 혼동되지 않음 (이벤트 우선순위 Handle > Window)
  *
  * [DimClick] Dim 클릭 이동 + 이벤트 우선순위 최종 검증 (P3-⑭)
- * 완료 기준: 좌/우 Dim Click과 경계 부근 보정 · Window 안쪽 Click 무반응
- * · 같은 지점에서 Handle > Window > Dim 중 하나만 반응
+ * 완료 기준: 좌/우 Dim Click과 경계 부근 보정 · Window 안쪽 Click 무반응 · 같은 지점에서 Handle > Window > Dim 중 하나만 반응
  */
 import { useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
@@ -28,7 +23,7 @@ import {
   useZoomAndPanController,
   ZoomAndPanPreview,
   type Range,
-} from "../recharts";
+} from "../index";
 
 // ── 실험 데이터: 10개 (A~J) — fullRange {0, 9}, fullSpan 9 ──
 interface Datum {
@@ -135,8 +130,7 @@ function PreviewStaticDemo() {
 
 /**
  * 극단 케이스: 데이터 1개 → fullRange {0,0}, fullSpan 0.
- * `fullSpan || 1` 가드 덕에 NaN% 없이 렌더되고,
- * Window 폭 0% + Handle 둘 다 왼쪽 끝(0%)에 겹쳐 보이면 통과.
+ * `fullSpan || 1` 가드 덕에 NaN% 없이 렌더되고, Window 폭 0% + Handle 둘 다 왼쪽 끝(0%)에 겹쳐 보이면 통과.
  */
 function SinglePointDemo() {
   const zap = useZoomAndPanController({
@@ -268,8 +262,7 @@ function WindowPanDemo() {
 /**
  * P3-⑭ Dim Click 검증 + Preview 이벤트 우선순위 최종 확인.
  *
- * 마지막 commit의 source를 표시해 "같은 화면에서 어느 층이 반응했는지"를
- * 눈으로 확인할 수 있게 했다 (resize-left/right · window-pan · dim-click).
+ * 마지막 commit의 source를 표시해 "같은 화면에서 어느 층이 반응했는지"를 눈으로 확인할 수 있게 했다 (resize-left/right · window-pan · dim-click).
  */
 function DimClickDemo() {
   const [lastCommit, setLastCommit] = useState("아직 없음");

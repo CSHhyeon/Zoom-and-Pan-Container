@@ -16,7 +16,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { useZoomAndPanController, ZoomAndPanPreview } from "../recharts";
+import { useZoomAndPanController, ZoomAndPanPreview } from "../index";
 
 // ── 실험 데이터: 30개 — 팬으로 돌아다닐 공간이 넉넉하도록 ──
 const DATA = Array.from({ length: 30 }, (_, index) => ({
