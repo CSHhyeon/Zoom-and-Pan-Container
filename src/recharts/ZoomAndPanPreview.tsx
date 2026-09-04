@@ -43,6 +43,7 @@ export function ZoomAndPanPreview<T>({
     range,
     fullRange,
     previewData,
+    inset,
     resizeLeft,
     resizeRight,
     panTo,
@@ -141,8 +142,11 @@ export function ZoomAndPanPreview<T>({
       ref={containerRef}
       style={{
         position: "relative",
-        width: "100%",
         height,
+        // 좌우 margin으로 컨테이너 자체를 좁혀 Main plot 영역과 정렬한다 (hook의 inset 공유).
+        // % 배치·픽셀 번역의 기준(containerRef rect)도 함께 좁아져 좌표계가 유지된다
+        marginLeft: inset.left,
+        marginRight: inset.right,
         userSelect: "none",
       }}
     >

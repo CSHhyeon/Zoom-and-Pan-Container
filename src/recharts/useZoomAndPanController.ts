@@ -14,9 +14,12 @@ import {
   panRange,
   resizeLeftRange,
   resizeRightRange,
+  zoomRange,
   type Range,
   type RangeConstraints,
+  type ZoomDirection,
 } from "../core";
+import { useWheelZoom } from "./useWheelZoom";
 import {
   useRangeCallbacks,
   type RangeChangeMeta,
@@ -33,6 +36,15 @@ export type {
 } from "./useRangeCallbacks";
 
 //   ############## 타입 ##############
+
+/**
+ * Main Chart wrapper 안에서 실제 plot 영역(축 안쪽)까지의 좌우 여백(px).
+ * 보통 left = YAxis width + margin.left, right = margin.right.
+ */
+export interface PlotInset {
+  left?: number;
+  right?: number;
+}
 
 /**
  * T: 데이터 한 행의 타입.
@@ -65,6 +77,14 @@ export interface UseZoomAndPanControllerOptions<T, TX = unknown> {
   defaultRange?: Range;
   /** 최소 범위 폭(`end - start`). 생략 시 core 기본값(1 = 최소 두 포인트) */
   minRange?: number;
+  /** Wheel Zoom 1회당 각 Handle이 움직이는 칸 수. 생략 시 core 기본값(1) */
+  zoomStep?: number;
+  /**
+   * Main Chart의 plot 여백 — Wheel anchor의 픽셀→Position 보정과
+   * Preview 좌우 정렬이 이 한 값을 공유한다 (Drag Pan 폭 보정도 사용 예정).
+   * headless라 사용자 차트의 축 폭을 알 수 없어 값으로 받는다 — 자동화는 v1.x Bridge.
+   */
+  inset?: PlotInset;
   /**
    * 조작 중 range가 실제로 바뀔 때마다 호출 — rAF throttle로 프레임당 최대 1회.
    * 화면 동기화용(예: 옆 차트 range 맞추기). 서버 요청은 onRangeCommit에서 할 것.
@@ -145,8 +165,14 @@ export interface ZoomAndPanController<T> {
    * range와 무관하게 계산되므로 드래그 중에도 배열 참조가 유지된다.
    */
   previewData: PreviewPoint[];
-  /** Main Chart wrapper div에 스프레드할 이벤트 props. Wheel Zoom·Drag Pan이 여기에 채워질 예정 */
-  mainProps: React.HTMLAttributes<HTMLDivElement>;
+  /** 정규화된 plot 여백(기본 0) — Preview가 Main plot 영역과 정렬할 때 사용 */
+  inset: Required<PlotInset>;
+  /**
+   * Main Chart wrapper div에 스프레드할 props: `<div {...zap.mainProps}>`.
+   * Wheel Zoom(ref로 non-passive 리스너 부착)이 들어 있고, Drag Pan이 추가될 예정.
+   * ref는 hook이 점유하므로 wrapper에 별도 ref를 직접 달지 말 것.
+   */
+  mainProps: React.ComponentProps<"div">;
   /** YAxis domain — 아직 항상 undefined (Recharts 오토스케일에 위임) */
   yDomain: [number, number] | undefined;
   /** Tooltip active — 아직 항상 undefined (Recharts가 관리) */
@@ -158,8 +184,22 @@ export interface ZoomAndPanController<T> {
 export function useZoomAndPanController<T, TX = unknown>(
   options: UseZoomAndPanControllerOptions<T, TX>,
 ): ZoomAndPanController<T> {
-  const { data, defaultRange, minRange, getY, onRangeChange, onRangeCommit } =
-    options;
+  const {
+    data,
+    defaultRange,
+    minRange,
+    zoomStep,
+    inset,
+    getY,
+    onRangeChange,
+    onRangeCommit,
+  } = options;
+
+  // 값 기준 memo — 사용자가 inset을 인라인 객체로 넘겨도 참조가 안정된다
+  const plotInset = useMemo<Required<PlotInset>>(
+    () => ({ left: inset?.left ?? 0, right: inset?.right ?? 0 }),
+    [inset?.left, inset?.right],
+  );
 
   const constraints = useMemo<RangeConstraints>(
     () => ({
@@ -268,29 +308,70 @@ export function useZoomAndPanController<T, TX = unknown>(
     [applyRangeOperation, constraints],
   );
 
-  // 중앙 배치(폭 유지·경계 우선) 후, 시작점을 정수 격자에 snap한다.
+  // 중앙 배치(폭 유지·경계 우선) 후 정수 격자에 snap한다.
   // 홀수 폭·소수 position이면 배치 결과가 소수라 배치만으로는 snap이 안 된다.
   const centerAt = useCallback(
     (position: number) =>
-      applyRangeOperation("dim-click", (current) => {
-        const centered = centerRangeAt(current, position, constraints);
-        return panRange(
-          centered,
-          Math.round(centered.start) - centered.start,
+      applyRangeOperation("dim-click", (current) =>
+        snapToBucketGrid(
+          centerRangeAt(current, position, constraints),
           constraints,
-        );
-      }),
+        ),
+      ),
     [applyRangeOperation, constraints],
-  );
-
-  const beginInteraction = useCallback(
-    (source: RangeChangeSource) => beginSession(source, readCurrentRange()),
-    [beginSession, readCurrentRange],
   );
 
   const endInteraction = useCallback(
     () => endSession(readCurrentRange()),
     [endSession, readCurrentRange],
+  );
+
+  /** Main Chart wrapper 요소 — wheel anchor 근사, 이후 Drag Pan의 폭 근사에도 사용 */
+  const mainElementRef = useRef<HTMLDivElement | null>(null);
+
+  // Wheel Zoom — 포인터 아래 지점(anchor)을 고정한 채 확대·축소한다.
+  // anchor는 wrapper 폭에서 inset을 뺀 plot 근사 기준 (잔여 오차는 카테고리 축의 자체 padding 정도 — 완전 정밀화는 v1.x Bridge).
+  // preventDefault용 non-passive 리스너와 150ms 정착 타이머는 useWheelZoom이 담당.
+  const wheelZoomBy = useCallback(
+    (direction: ZoomDirection, clientX: number) =>
+      applyRangeOperation("wheel-zoom", (current) => {
+        const zoomed = zoomRange(
+          current,
+          direction,
+          constraints,
+          zoomStep,
+          toApproxAnchor(mainElementRef.current, clientX, current, plotInset),
+        );
+        // anchor 배치 결과는 소수 — 정수 격자로 snap (이동 최대 0.5칸)
+        return snapToBucketGrid(zoomed, constraints);
+      }),
+    [applyRangeOperation, constraints, zoomStep, plotInset],
+  );
+  const beginWheelSession = useCallback(
+    () => beginSession("wheel-zoom", readCurrentRange()),
+    [beginSession, readCurrentRange],
+  );
+  const { mainRef: attachWheel, settle: settleWheel } = useWheelZoom({
+    onZoom: wheelZoomBy,
+    onSessionStart: beginWheelSession,
+    onSessionEnd: endInteraction,
+  });
+
+  const setMainElement = useCallback(
+    (element: HTMLDivElement | null) => {
+      mainElementRef.current = element;
+      attachWheel(element);
+    },
+    [attachWheel],
+  );
+
+  const beginInteraction = useCallback(
+    (source: RangeChangeSource) => {
+      // 정착 대기 중인 wheel 조작을 먼저 마감 — 두 조작의 세션이 섞이지 않게
+      settleWheel();
+      beginSession(source, readCurrentRange());
+    },
+    [settleWheel, beginSession, readCurrentRange],
   );
 
   /**
@@ -317,11 +398,12 @@ export function useZoomAndPanController<T, TX = unknown>(
     [data, getY],
   );
 
-  // Wheel Zoom·Drag Pan이 여기에 이벤트를 채운다.
-  // 미리 {...zap.mainProps}로 감싸두면 이후 기능이 사용자 코드 수정 없이 켜진다.
-  const mainProps = useMemo<React.HTMLAttributes<HTMLDivElement>>(
-    () => ({}),
-    [],
+  // Drag Pan이 이후 여기에 pointer 이벤트를 채운다.
+  // ref: React onWheel은 passive라 preventDefault가 무시된다 —
+  // 네이티브 non-passive wheel 리스너를 달기 위해 wrapper 요소를 hook이 점유한다.
+  const mainProps = useMemo<React.ComponentProps<"div">>(
+    () => ({ ref: setMainElement }),
+    [setMainElement],
   );
 
   return {
@@ -337,8 +419,46 @@ export function useZoomAndPanController<T, TX = unknown>(
     endInteraction,
     data,
     previewData,
+    inset: plotInset,
     mainProps,
     yDomain: undefined,
     tooltipActive: undefined,
   };
+}
+
+/**
+ * Main Chart wrapper 기준 clientX → 현재 range 안의 근사 Position.
+ *
+ * wrapper에는 YAxis·margin이 포함되어 실제 plot 영역보다 넓다 — 그만큼(~10%)
+ * anchor가 어긋나는 것은 수용한다 (정밀 좌표는 v1.x Bridge의 몫).
+ * 요소가 없거나 폭이 0이면 undefined → zoomRange가 중앙 기준으로 폴백한다.
+ */
+/**
+ * 소수 Position 결과(anchor zoom·중앙 배치)를 정수 Bucket 격자로 snap.
+ *
+ * 폭을 먼저 반올림해 부동소수점 찌꺼기(예: 3.0000000000000018)를 제거하고,
+ * 시작점을 반올림한 뒤(이동 최대 0.5칸) 관문으로 마무리한다.
+ * 결과를 콜백(snapshot)이 그대로 받으므로 반드시 유효한 Range여야 한다.
+ */
+function snapToBucketGrid(range: Range, constraints: RangeConstraints): Range {
+  const span = Math.round(range.end - range.start);
+  const start = Math.round(range.start);
+  return clampRange({ start, end: start + span }, constraints);
+}
+
+// wrapper 폭에서 inset(YAxis·margin 몫)을 빼 plot 영역을 근사한다.
+// 유효 폭이 없으면 undefined → zoomRange가 중앙 기준으로 폴백.
+function toApproxAnchor(
+  element: HTMLDivElement | null,
+  clientX: number,
+  range: Range,
+  inset: Required<PlotInset>,
+): number | undefined {
+  if (element === null) return undefined;
+  const rect = element.getBoundingClientRect();
+  const plotWidth = rect.width - inset.left - inset.right;
+  if (plotWidth <= 0) return undefined;
+
+  const ratio = (clientX - rect.left - inset.left) / plotWidth;
+  return range.start + ratio * (range.end - range.start);
 }
