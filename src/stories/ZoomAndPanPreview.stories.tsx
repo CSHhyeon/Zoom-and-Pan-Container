@@ -12,6 +12,10 @@
  * [HandleResize] Left/Right Handle 드래그 (P3-⑩·⑪)
  * 완료 기준: 반대쪽 Handle 고정 · 두 Handle 교차 불가 · 최소·최대 Window 준수
  * · 경계 초과 금지 · Main Chart 동기 갱신
+ *
+ * [WindowPan] Window 드래그 이동 (P3-⑬)
+ * 완료 기준: 폭 유지·양쪽 Handle 동시 이동 · 전체 범위 경계 준수
+ * · Handle Drag와 혼동되지 않음 (이벤트 우선순위 Handle > Window)
  */
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Line, LineChart, ResponsiveContainer, XAxis, YAxis } from "recharts";
@@ -203,6 +207,59 @@ function HandleResizeDemo() {
   );
 }
 
+/**
+ * P3-⑬ Window Pan 검증.
+ *
+ * Window(테두리 상자) 안쪽을 잡고 좌우로 끌며 확인한다.
+ * 잡은 지점이 손가락을 따라오는지(grab offset)도 함께 관찰.
+ */
+function WindowPanDemo() {
+  const zap = useZoomAndPanController({
+    data: DATA,
+    rangeMode: "bucket",
+    getX: (d) => d.country,
+    getY: (d) => d.value,
+    defaultRange: { start: 2, end: 5 },
+  });
+
+  return (
+    <div style={{ maxWidth: 720, fontFamily: "sans-serif" }}>
+      {/* Main Chart — 완료 기준: Window 드래그에 맞춰 같이 갱신되어야 함 */}
+      <div {...zap.mainProps}>
+        <ResponsiveContainer width="100%" height={240}>
+          <LineChart data={zap.visibleData}>
+            <XAxis dataKey="country" />
+            <YAxis domain={zap.yDomain} />
+            <Line dataKey="value" stroke="#4f7cf7" isAnimationActive={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+
+      <ZoomAndPanPreview controller={zap} />
+
+      <p style={{ color: "#666", fontSize: 12 }}>
+        현재 range: {zap.range.start} ~ {zap.range.end} (폭{" "}
+        {zap.range.end - zap.range.start} — 드래그 내내 불변이어야 함)
+      </p>
+
+      {/* 완료 기준 체크리스트 — Window 안쪽을 잡고 좌우로 끌며 하나씩 확인 */}
+      <ul style={{ color: "#666", fontSize: 12, paddingLeft: 16 }}>
+        <li>Window를 끌면 통째로 이동 — 폭이 절대 변하지 않는다</li>
+        <li>양쪽 Handle이 같은 거리만큼 동시에 움직인다</li>
+        <li>왼쪽 끝(0)·오른쪽 끝(9)에서 벽에 붙어 멈춘다 (폭 유지)</li>
+        <li>
+          Handle 위에서 드래그를 시작하면 Pan이 아니라 Resize가 된다 (우선순위
+          Handle &gt; Window)
+        </li>
+        <li>잡은 지점이 손가락을 따라온다 (Window가 순간이동하지 않음)</li>
+        <li>드래그에 맞춰 Main Chart가 같이 갱신된다</li>
+        <li>Bucket 단위로 딱딱 끊어져 이동한다 (snap)</li>
+        <li>Dim(흐린 영역) 드래그·클릭은 여전히 무반응 — Dim Click에서 구현</li>
+      </ul>
+    </div>
+  );
+}
+
 const meta: Meta<typeof PreviewStaticDemo> = {
   title: "Preview/ZoomAndPanPreview",
   component: PreviewStaticDemo,
@@ -219,4 +276,8 @@ export const SinglePoint: Story = {
 
 export const HandleResize: Story = {
   render: () => <HandleResizeDemo />,
+};
+
+export const WindowPan: Story = {
+  render: () => <WindowPanDemo />,
 };
