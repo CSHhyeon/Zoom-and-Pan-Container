@@ -45,8 +45,9 @@ export interface UseZoomAndPanControllerOptions<T, TX = unknown> {
    */
   getX: (datum: T, index: number) => TX;
   /**
-   * Preview 추이 차트에 그릴 y값을 뽑는 함수.
+   * Preview 내장 추이 차트(기본 AreaChart)에 그릴 y값을 뽑는 함수.
    * 생략 시 Preview는 추이 없이 Dim/Window/Handle만 그린다.
+   * Preview 추이를 renderTrend로 직접 그린다면 필요 없다 (ZoomAndPanPreviewProps 참고).
    */
   getY?: (datum: T, index: number) => number;
   /**

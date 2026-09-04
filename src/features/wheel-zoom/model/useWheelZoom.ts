@@ -4,7 +4,7 @@
  * React의 onWheel은 root에 passive로 등록되어 preventDefault가 무시된다.
  * 그래서 ref로 요소를 받아 네이티브 non-passive 리스너를 직접 단다 — 차트 위에서 휠은 항상 Zoom이고 페이지 스크롤은 차단해야 하기 때문.
  *
- * 포인터 중심 Zoom의 anchor 측정도 여기서 한다 — plot 영역 안 포인터 위치 비율(anchorRatio, lib/toAnchorRatio)을 onZoom에 넘긴다.
+ * 포인터 중심 Zoom의 anchor 측정도 여기서 한다 — plot 영역 안 포인터 위치 비율(anchorRatio, lib/plotRatio)을 onZoom에 넘긴다.
  * 비율 → Range Position 번역은 controller의 몫.
  *
  * 매 틱 후 같은 좌표의 mousemove를 재전송한다(rAF) — mousemove 없이 데이터가 바뀌면
@@ -17,7 +17,8 @@ import { useCallback, useEffect, useRef } from "react";
 import type { ZoomDirection } from "../../../entities/range";
 import { useLatestRef } from "../../../shared/hooks";
 import { WHEEL_COMMIT_DELAY_MS } from "../constants";
-import { toAnchorRatio, toClientX } from "../lib/toAnchorRatio";
+import { dispatchHoverMove } from "../lib/dispatchHoverMove";
+import { toAnchorRatio, toClientX } from "../lib/plotRatio";
 
 interface UseWheelZoomOptions {
   /**
@@ -61,10 +62,9 @@ export function useWheelZoom(options: UseWheelZoomOptions): {
   }, [optionsRef]);
 
   /**
-   * hover 재계산 신호 — Zoom은 mousemove 없이 차트 데이터를 바꾸므로, 차트 라이브러리의 hover 상태
-   * (Recharts Tooltip의 activeIndex 등)는 마지막 mousemove 기준으로 남아 엉뚱한 포인트를 가리키게 된다.
-   * 매 휠 틱 후 같은 포인터 좌표의 mousemove를 재전송해 새 렌더 위에서 "포인터와 가장 가까운 x"를 다시 잡게 한다.
-   * rAF 사용: React 커밋 뒤(새 데이터가 그려진 뒤)에 실행되고, 프레임 내 연속 틱은 1회로 합쳐진다.
+   * hover 재계산 신호 예약 — 매 휠 틱 후 mousemove 재전송(lib/dispatchHoverMove)으로
+   * 차트가 새 렌더 위에서 hover(Tooltip 선택)를 다시 잡게 한다.
+   * rAF 사용: React 커밋 뒤(새 데이터가 그려진 뒤)에 실행되고, 프레임 내 연속 틱은 마지막 좌표 1회로 합쳐진다.
    */
   const pointerRef = useRef<{ x: number; y: number } | null>(null);
   const hoverRefreshRafRef = useRef<number | null>(null);
@@ -78,19 +78,7 @@ export function useWheelZoom(options: UseWheelZoomOptions): {
         hoverRefreshRafRef.current = null;
         const pointer = pointerRef.current;
         if (pointer === null) return;
-        // wrapper에 직접 쏘면 버블링이 위로만 가서 차트 내부 리스너에 닿지 않는다 — 포인터 바로 아래 요소에서 쏜다
-        const target = element.ownerDocument.elementFromPoint(
-          pointer.x,
-          pointer.y,
-        );
-        if (target === null || !element.contains(target)) return;
-        target.dispatchEvent(
-          new MouseEvent("mousemove", {
-            clientX: pointer.x,
-            clientY: pointer.y,
-            bubbles: true,
-          }),
-        );
+        dispatchHoverMove(element, pointer.x, pointer.y);
       });
     },
     [],

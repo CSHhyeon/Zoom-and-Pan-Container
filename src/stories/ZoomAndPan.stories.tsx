@@ -48,6 +48,22 @@ function formatPayload(snapshot: RangeSnapshot, meta: RangeChangeMeta): string {
   return `${meta.source} → ${snapshot.range.start}~${snapshot.range.end}`;
 }
 
+/**
+ * Preview 추이 — Main Chart와 같은 LineChart 미니 버전 (renderTrend 계약: margin 0 · 축 없음).
+ * 모듈 레벨 함수라 참조가 고정된다 → 드래그 중 Preview 추이 차트의 memo가 유지된다.
+ * value 필드만 쓰므로 Playground(Datum)·LargeDataset(TimeDatum)이 공유한다.
+ */
+const renderLineTrend = (data: { value: number }[]) => (
+  <LineChart data={data} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+    <Line
+      dataKey="value"
+      stroke="#4f7cf7"
+      dot={false}
+      isAnimationActive={false}
+    />
+  </LineChart>
+);
+
 function PlaygroundDemo() {
   const [changeCount, setChangeCount] = useState(0);
   const [commitCount, setCommitCount] = useState(0);
@@ -95,7 +111,7 @@ function PlaygroundDemo() {
         </ResponsiveContainer>
       </div>
 
-      <ZoomAndPanPreview controller={zap} />
+      <ZoomAndPanPreview controller={zap} renderTrend={renderLineTrend} />
 
       {/* setRange 검증 — 프로그램적 변경은 관문 보정을 거치고 콜백은 부르지 않는다 */}
       <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -281,7 +297,7 @@ function LargeDatasetDemo() {
         </ResponsiveContainer>
       </div>
 
-      <ZoomAndPanPreview controller={zap} />
+      <ZoomAndPanPreview controller={zap} renderTrend={renderLineTrend} />
 
       <p style={{ fontSize: 13 }}>
         현재 range: <strong>{zap.range.start}</strong> ~{" "}
