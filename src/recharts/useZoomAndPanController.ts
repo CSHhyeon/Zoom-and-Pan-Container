@@ -10,6 +10,7 @@ import type React from "react";
 import {
   clampRange,
   isSameRange,
+  panRange,
   resizeLeftRange,
   resizeRightRange,
   type Range,
@@ -124,6 +125,12 @@ export interface ZoomAndPanController<T> {
    * 거치므로 최소 폭(`start + minRange`)과 오른쪽 경계(`fullRange.end`)를 넘지 않는다.
    */
   resizeRight: (nextEnd: number) => void;
+  /**
+   * Window Pan — 폭을 유지한 채 start가 nextStart에 오도록 통째로 이동한다.
+   * nextStart는 Bucket Position(소수 가능).
+   * 반올림 snap 후 core panRange를 거치므로 경계에 닿으면 벽에 붙어 멈춘다 (폭 불변).
+   */
+  panTo: (nextStart: number) => void;
   /** 원본 전체 데이터 — 사용자가 index로 원본 datum을 되찾을 때 사용 */
   data: readonly T[];
   /**
@@ -244,6 +251,16 @@ export function useZoomAndPanController<T, TX = unknown>(
     [applyRangeOperation, constraints],
   );
 
+  // panRange는 delta 기반 — 목표 start와 현재 start의 차로 환산해 넘긴다.
+  // NaN 목표는 delta도 NaN이 되어 core가 no-op 처리한다.
+  const panTo = useCallback(
+    (nextStart: number) =>
+      applyRangeOperation("window-pan", (current) =>
+        panRange(current, Math.round(nextStart) - current.start, constraints),
+      ),
+    [applyRangeOperation, constraints],
+  );
+
   const beginInteraction = useCallback(
     (source: RangeChangeSource) => beginSession(source, readCurrentRange()),
     [beginSession, readCurrentRange],
@@ -292,6 +309,7 @@ export function useZoomAndPanController<T, TX = unknown>(
     setRange,
     resizeLeft,
     resizeRight,
+    panTo,
     beginInteraction,
     endInteraction,
     data,
