@@ -115,6 +115,84 @@ describe("zoomRange — 최소·최대 Window 준수", () => {
   });
 });
 
+describe("zoomRange — anchor (포인터 중심 Zoom)", () => {
+  it("anchor 지점의 창 내 비율을 줌 전후에 유지한다", () => {
+    // {0,10} 폭 10, anchor 8 = 80% 지점. 확대 → 폭 8, start = 8 - 0.8*8 = 1.6
+    const result = zoomRange(
+      { start: 0, end: 10 },
+      "in",
+      { fullRange: { start: 0, end: 20 } },
+      1,
+      8,
+    );
+
+    // 부동소수점 오차 허용 (0.8 * 8 = 6.4000…04)
+    expect(result.start).toBeCloseTo(1.6);
+    expect(result.end).toBeCloseTo(9.6);
+    // anchor는 여전히 80% 지점
+    expect((8 - result.start) / (result.end - result.start)).toBeCloseTo(0.8);
+  });
+
+  it("축소도 anchor 비율을 유지한다", () => {
+    // {2,6} 폭 4, anchor 5 = 75% 지점. 축소 → 폭 6, start = 5 - 0.75*6 = 0.5
+    const result = zoomRange({ start: 2, end: 6 }, "out", FULL, 1, 5);
+
+    expect(result).toEqual({ start: 0.5, end: 6.5 });
+  });
+
+  it("anchor가 창의 중앙이면 중심 기준과 결과가 같다", () => {
+    expect(zoomRange({ start: 2, end: 6 }, "in", FULL, 1, 4)).toEqual(
+      zoomRange({ start: 2, end: 6 }, "in", FULL, 1),
+    );
+  });
+
+  it("anchor 생략·NaN이면 기존 중심 동작으로 폴백한다", () => {
+    const centered = zoomRange({ start: 2, end: 6 }, "in", FULL);
+
+    expect(zoomRange({ start: 2, end: 6 }, "in", FULL, 1, undefined)).toEqual(
+      centered,
+    );
+    expect(zoomRange({ start: 2, end: 6 }, "in", FULL, 1, Number.NaN)).toEqual(
+      centered,
+    );
+  });
+
+  it("창 밖 anchor는 가장자리 고정으로 취급한다", () => {
+    // anchor 10 > end 6 → 오른쪽 가장자리(6) 고정: 확대 → {4, 6}
+    expect(zoomRange({ start: 2, end: 6 }, "in", FULL, 1, 10)).toEqual({
+      start: 4,
+      end: 6,
+    });
+    // anchor -3 < start 2 → 왼쪽 가장자리(2) 고정: 확대 → {2, 4}
+    expect(zoomRange({ start: 2, end: 6 }, "in", FULL, 1, -3)).toEqual({
+      start: 2,
+      end: 4,
+    });
+  });
+
+  it("anchor 배치가 경계를 넘으면 반대쪽만 이동한다 (관문 보정)", () => {
+    // {0,6} anchor 1(1/6 지점), 축소 → 폭 8, 원하는 start = 1 - 8/6 < 0 → {0, 8}
+    expect(zoomRange({ start: 0, end: 6 }, "out", FULL, 1, 1)).toEqual({
+      start: 0,
+      end: 8,
+    });
+  });
+
+  it("연속 확대에도 anchor가 (보정 전까지) 계속 고정된다", () => {
+    const constraints = { fullRange: { start: 0, end: 20 } };
+    const anchor = 12;
+
+    let range = { start: 4, end: 20 };
+    for (let i = 0; i < 3; i += 1) {
+      const ratioBefore = (anchor - range.start) / (range.end - range.start);
+      range = zoomRange(range, "in", constraints, 1, anchor);
+      const ratioAfter = (anchor - range.start) / (range.end - range.start);
+
+      expect(ratioAfter).toBeCloseTo(ratioBefore);
+    }
+  });
+});
+
 describe("zoomRange — 잘못된 입력 (단일 관문 통과 확인)", () => {
   it("NaN range는 fullRange로 안전 복귀한다", () => {
     expect(zoomRange({ start: Number.NaN, end: 5 }, "in", FULL)).toEqual({
