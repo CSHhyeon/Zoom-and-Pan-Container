@@ -47,17 +47,21 @@ function WheelZoomDemo() {
         ▼ 차트 위에서 휠: Zoom만 된다 (페이지 스크롤 차단). 위로 굴림 = 확대.
       </p>
 
+      {/* YAxis 폭·margin을 명시하고 같은 값을 Preview inset으로 — plot 영역과 좌우 정렬 */}
       <div {...zap.mainProps}>
         <ResponsiveContainer width="100%" height={260}>
-          <LineChart data={zap.visibleData}>
+          <LineChart
+            data={zap.visibleData}
+            margin={{ top: 5, right: 10, bottom: 5, left: 0 }}
+          >
             <XAxis dataKey="country" />
-            <YAxis domain={zap.yDomain} />
+            <YAxis width={40} domain={zap.yDomain} />
             <Line dataKey="value" stroke="#4f7cf7" isAnimationActive={false} />
           </LineChart>
         </ResponsiveContainer>
       </div>
 
-      <ZoomAndPanPreview controller={zap} />
+      <ZoomAndPanPreview controller={zap} inset={{ left: 40, right: 10 }} />
 
       <p style={{ fontSize: 13 }}>
         현재 range: {zap.range.start} ~ {zap.range.end} (폭{" "}
@@ -80,6 +84,10 @@ function WheelZoomDemo() {
           위 readout에 소수가 보이면 실패)
         </li>
         <li>Preview Window·Main Chart가 휠마다 실시간 동기화</li>
+        <li>
+          Preview의 시작·끝이 Main Chart plot 영역(축 안쪽)과 정렬된다 —
+          <code>inset={"{ left: YAxis폭+margin.left, right: margin.right }"}</code>
+        </li>
         <li>축소 중 한쪽이 경계(0 또는 19)에 닿으면 반대쪽만 계속 벌어진다</li>
         <li>최소 폭(2포인트)·전체 범위에서 더 이상 변하지 않는다</li>
         <li>

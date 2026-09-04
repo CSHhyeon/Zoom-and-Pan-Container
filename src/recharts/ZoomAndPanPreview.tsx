@@ -33,11 +33,18 @@ export interface ZoomAndPanPreviewProps<T> {
   controller: ZoomAndPanController<T>;
   /** Preview 높이(px) */
   height?: number;
+  /**
+   * Preview 좌우 안쪽 여백(px) — Main Chart의 plot 영역과 시작·끝을 맞출 때 사용.
+   * 보통 left = YAxis width + margin.left, right = margin.right.
+   * (headless라 사용자 차트의 축 폭을 알 수 없어 값으로 받는다 — v1.x Bridge가 자동화 예정)
+   */
+  inset?: { left?: number; right?: number };
 }
 
 export function ZoomAndPanPreview<T>({
   controller,
   height = 64,
+  inset,
 }: ZoomAndPanPreviewProps<T>) {
   const {
     range,
@@ -141,8 +148,11 @@ export function ZoomAndPanPreview<T>({
       ref={containerRef}
       style={{
         position: "relative",
-        width: "100%",
         height,
+        // 좌우 margin으로 컨테이너 자체를 좁혀 Main plot 영역과 정렬한다.
+        // % 배치·픽셀 번역의 기준(containerRef rect)도 함께 좁아져 좌표계가 유지된다
+        marginLeft: inset?.left,
+        marginRight: inset?.right,
         userSelect: "none",
       }}
     >
