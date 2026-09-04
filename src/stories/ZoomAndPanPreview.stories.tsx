@@ -16,7 +16,12 @@
  * [WindowPan] Window 드래그 이동 (P3-⑬)
  * 완료 기준: 폭 유지·양쪽 Handle 동시 이동 · 전체 범위 경계 준수
  * · Handle Drag와 혼동되지 않음 (이벤트 우선순위 Handle > Window)
+ *
+ * [DimClick] Dim 클릭 이동 + 이벤트 우선순위 최종 검증 (P3-⑭)
+ * 완료 기준: 좌/우 Dim Click과 경계 부근 보정 · Window 안쪽 Click 무반응
+ * · 같은 지점에서 Handle > Window > Dim 중 하나만 반응
  */
+import { useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Line, LineChart, ResponsiveContainer, XAxis, YAxis } from "recharts";
 import {
@@ -260,6 +265,68 @@ function WindowPanDemo() {
   );
 }
 
+/**
+ * P3-⑭ Dim Click 검증 + Preview 이벤트 우선순위 최종 확인.
+ *
+ * 마지막 commit의 source를 표시해 "같은 화면에서 어느 층이 반응했는지"를
+ * 눈으로 확인할 수 있게 했다 (resize-left/right · window-pan · dim-click).
+ */
+function DimClickDemo() {
+  const [lastCommit, setLastCommit] = useState("아직 없음");
+
+  const zap = useZoomAndPanController({
+    data: DATA,
+    rangeMode: "bucket",
+    getX: (d) => d.country,
+    getY: (d) => d.value,
+    defaultRange: { start: 3, end: 6 },
+    onRangeCommit: (snapshot, meta) =>
+      setLastCommit(
+        `${meta.source} → ${snapshot.range.start}~${snapshot.range.end}`,
+      ),
+  });
+
+  return (
+    <div style={{ maxWidth: 720, fontFamily: "sans-serif" }}>
+      <div {...zap.mainProps}>
+        <ResponsiveContainer width="100%" height={240}>
+          <LineChart data={zap.visibleData}>
+            <XAxis dataKey="country" />
+            <YAxis domain={zap.yDomain} />
+            <Line dataKey="value" stroke="#4f7cf7" isAnimationActive={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+
+      <ZoomAndPanPreview controller={zap} />
+
+      <p style={{ color: "#666", fontSize: 12 }}>
+        현재 range: {zap.range.start} ~ {zap.range.end} (폭{" "}
+        {zap.range.end - zap.range.start}) · 마지막 commit:{" "}
+        <strong>{lastCommit}</strong>
+      </p>
+
+      {/* 완료 기준 체크리스트 */}
+      <ul style={{ color: "#666", fontSize: 12, paddingLeft: 16 }}>
+        <li>
+          좌/우 Dim 클릭 → 클릭 지점이 Window 중앙에 오고 폭은 불변, commit
+          source가 dim-click
+        </li>
+        <li>
+          전체 시작·끝 부근 Dim 클릭 → 중앙 대신 벽에 붙어 멈춤 (경계 준수 우선)
+        </li>
+        <li>클릭 즉시 반영 — 드래그와 달리 단발로 change + commit</li>
+        <li>Window 안쪽 클릭(움직이지 않음) → 아무 변화 없음, commit 그대로</li>
+        <li>
+          이벤트 우선순위 최종 확인 — 같은 화면에서: Handle 드래그 →
+          resize-left/right, Window 드래그 → window-pan, Dim 클릭 → dim-click.
+          어느 지점에서든 정확히 하나만 반응한다
+        </li>
+      </ul>
+    </div>
+  );
+}
+
 const meta: Meta<typeof PreviewStaticDemo> = {
   title: "Preview/ZoomAndPanPreview",
   component: PreviewStaticDemo,
@@ -280,4 +347,8 @@ export const HandleResize: Story = {
 
 export const WindowPan: Story = {
   render: () => <WindowPanDemo />,
+};
+
+export const DimClick: Story = {
+  render: () => <DimClickDemo />,
 };
