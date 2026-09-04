@@ -9,7 +9,10 @@
  * 드래그는 "픽셀 → Bucket Position 번역"까지만 담당하고(features/preview-drag), snap·최소 폭·경계 보정은 controller → core의 몫이다.
  */
 import { memo, useCallback, useRef } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import type {
+  PointerEvent as ReactPointerEvent,
+  ReactElement,
+} from "react";
 import {
   toBucketPosition,
   usePreviewDrag,
@@ -23,15 +26,26 @@ export interface ZoomAndPanPreviewProps<T> {
   controller: ZoomAndPanController<T>;
   /** Preview 높이(px) */
   height?: number;
+  /**
+   * Preview 추이를 Main Chart의 미니 버전으로 직접 그린다 — 타입·색이 Main과 같아진다.
+   * data는 hook에 넘긴 원본 배열 그대로이므로 Main과 같은 dataKey·색을 쓰면 된다. 생략 시 내장 AreaChart.
+   *
+   * 좌표 계약: 반환 차트는 margin 전부 0 + 축 미지정(또는 hide) — 오버레이(Dim/Window/Handle) 정렬 조건.
+   * Bar 계열은 band 정렬(칸 중앙)이라 양끝 반 칸 오차는 허용 범위다.
+   * 성능: 함수 참조가 바뀌면 추이 차트가 다시 그려진다 — 컴포넌트 밖 함수나 useCallback으로 참조를 고정할 것.
+   */
+  renderTrend?: (data: T[]) => ReactElement;
 }
 
 function ZoomAndPanPreviewImpl<T>({
   controller,
   height = 64,
+  renderTrend,
 }: ZoomAndPanPreviewProps<T>) {
   const {
     range,
     fullRange,
+    data,
     previewData,
     inset,
     resizeLeft,
@@ -138,7 +152,12 @@ function ZoomAndPanPreviewImpl<T>({
         userSelect: "none",
       }}
     >
-      <PreviewTrendChart data={previewData} fullRange={fullRange} />
+      <PreviewTrendChart
+        data={data}
+        previewData={previewData}
+        fullRange={fullRange}
+        renderTrend={renderTrend}
+      />
 
       {/* Left Dim — 클릭하면 그 지점이 Window 중앙에 오도록 이동 */}
       <div
