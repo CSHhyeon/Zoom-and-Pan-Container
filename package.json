@@ -1,7 +1,27 @@
 {
   "name": "@soohyeon_choi/zoom-and-pan-controller",
-  "version": "0.0.0",
-  "description": "Recharts Zoom and Pan Controller library",
+  "version": "0.1.0",
+  "description": "Headless Zoom & Pan controller for Recharts — keep your chart, add wheel zoom, drag pan and a preview minimap",
+  "keywords": [
+    "recharts",
+    "react",
+    "chart",
+    "zoom",
+    "pan",
+    "brush",
+    "minimap",
+    "headless"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CSHhyeon/Zoom-and-Pan-Container.git"
+  },
+  "homepage": "https://github.com/CSHhyeon/Zoom-and-Pan-Container#readme",
+  "bugs": {
+    "url": "https://github.com/CSHhyeon/Zoom-and-Pan-Container/issues"
+  },
+  "license": "MIT",
+  "author": "Soohyeon Choi (https://github.com/CSHhyeon)",
   "type": "module",
   "files": [
     "dist"
