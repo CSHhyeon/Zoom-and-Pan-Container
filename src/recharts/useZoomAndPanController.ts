@@ -19,6 +19,7 @@ import {
   type RangeConstraints,
   type ZoomDirection,
 } from "../core";
+import { useMainDragPan } from "./useMainDragPan";
 import { useWheelZoom } from "./useWheelZoom";
 import {
   useRangeCallbacks,
@@ -80,8 +81,8 @@ export interface UseZoomAndPanControllerOptions<T, TX = unknown> {
   /** Wheel Zoom 1회당 각 Handle이 움직이는 칸 수. 생략 시 core 기본값(1) */
   zoomStep?: number;
   /**
-   * Main Chart의 plot 여백 — Wheel anchor의 픽셀→Position 보정과
-   * Preview 좌우 정렬이 이 한 값을 공유한다 (Drag Pan 폭 보정도 사용 예정).
+   * Main Chart의 plot 여백 — Wheel anchor 보정·Drag Pan 폭 보정·Preview
+   * 좌우 정렬이 이 한 값을 공유한다.
    * headless라 사용자 차트의 축 폭을 알 수 없어 값으로 받는다 — 자동화는 v1.x Bridge.
    */
   inset?: PlotInset;
@@ -169,13 +170,16 @@ export interface ZoomAndPanController<T> {
   inset: Required<PlotInset>;
   /**
    * Main Chart wrapper div에 스프레드할 props: `<div {...zap.mainProps}>`.
-   * Wheel Zoom(ref로 non-passive 리스너 부착)이 들어 있고, Drag Pan이 추가될 예정.
+   * Wheel Zoom(ref로 non-passive 리스너 부착)과 Drag Pan(pointer 핸들러, touchAction pan-y)이 들어 있다.
    * ref는 hook이 점유하므로 wrapper에 별도 ref를 직접 달지 말 것.
    */
   mainProps: React.ComponentProps<"div">;
   /** YAxis domain — 아직 항상 undefined (Recharts 오토스케일에 위임) */
   yDomain: [number, number] | undefined;
-  /** Tooltip active — 아직 항상 undefined (Recharts가 관리) */
+  /**
+   * Main Tooltip의 active — `<Tooltip active={zap.tooltipActive}>`로 연결.
+   * Drag 중 false(강제 숨김), 평소 undefined(Recharts가 hover 관리).
+   */
   tooltipActive: boolean | undefined;
 }
 
@@ -300,12 +304,21 @@ export function useZoomAndPanController<T, TX = unknown>(
 
   // panRange는 delta 기반 — 목표 start와 현재 start의 차로 환산해 넘긴다.
   // NaN 목표는 delta도 NaN이 되어 core가 no-op 처리한다.
-  const panTo = useCallback(
-    (nextStart: number) =>
-      applyRangeOperation("window-pan", (current) =>
+  // Preview Window Pan과 Main Drag Pan이 source만 다르고 같은 이동이라 공유한다.
+  const panToward = useCallback(
+    (source: RangeChangeSource, nextStart: number) =>
+      applyRangeOperation(source, (current) =>
         panRange(current, Math.round(nextStart) - current.start, constraints),
       ),
     [applyRangeOperation, constraints],
+  );
+  const panTo = useCallback(
+    (nextStart: number) => panToward("window-pan", nextStart),
+    [panToward],
+  );
+  const mainPanTo = useCallback(
+    (nextStart: number) => panToward("main-pan", nextStart),
+    [panToward],
   );
 
   // 중앙 배치(폭 유지·경계 우선) 후 정수 격자에 snap한다.
@@ -374,6 +387,27 @@ export function useZoomAndPanController<T, TX = unknown>(
     [settleWheel, beginSession, readCurrentRange],
   );
 
+  // Main Drag Pan — 지도처럼 잡고 끄는 이동. 드래그 중에는 Main Tooltip을 숨긴다
+  const [isDragging, setIsDragging] = useState(false);
+
+  const beginMainPan = useCallback(() => {
+    setIsDragging(true);
+    beginInteraction("main-pan");
+  }, [beginInteraction]);
+
+  const endMainPan = useCallback(() => {
+    setIsDragging(false);
+    endInteraction();
+  }, [endInteraction]);
+
+  const mainDragHandlers = useMainDragPan({
+    onPanTo: mainPanTo,
+    onDragStart: beginMainPan,
+    onDragEnd: endMainPan,
+    readRange: readCurrentRange,
+    inset: plotInset,
+  });
+
   /**
    * Visible Data Slice — range에 걸치는 포인트를 양끝 포함으로 잘라낸다.
    * floor/ceil: 소수 Position(향후 snap=false)에서도 걸친 Bucket을 놓치지 않기 위함.
@@ -398,12 +432,16 @@ export function useZoomAndPanController<T, TX = unknown>(
     [data, getY],
   );
 
-  // Drag Pan이 이후 여기에 pointer 이벤트를 채운다.
   // ref: React onWheel은 passive라 preventDefault가 무시된다 —
   // 네이티브 non-passive wheel 리스너를 달기 위해 wrapper 요소를 hook이 점유한다.
+  // touchAction pan-y: 가로 제스처는 Drag Pan이 소비하고 세로 스와이프는 페이지 스크롤로 남긴다.
   const mainProps = useMemo<React.ComponentProps<"div">>(
-    () => ({ ref: setMainElement }),
-    [setMainElement],
+    () => ({
+      ref: setMainElement,
+      style: { touchAction: "pan-y" },
+      ...mainDragHandlers,
+    }),
+    [setMainElement, mainDragHandlers],
   );
 
   return {
@@ -422,16 +460,16 @@ export function useZoomAndPanController<T, TX = unknown>(
     inset: plotInset,
     mainProps,
     yDomain: undefined,
-    tooltipActive: undefined,
+    tooltipActive: isDragging ? false : undefined,
   };
 }
 
 /**
  * Main Chart wrapper 기준 clientX → 현재 range 안의 근사 Position.
  *
- * wrapper에는 YAxis·margin이 포함되어 실제 plot 영역보다 넓다 — 그만큼(~10%)
- * anchor가 어긋나는 것은 수용한다 (정밀 좌표는 v1.x Bridge의 몫).
- * 요소가 없거나 폭이 0이면 undefined → zoomRange가 중앙 기준으로 폴백한다.
+ * wrapper 폭에서 inset(YAxis·margin 몫)을 빼 plot 영역을 근사한다.
+ * 잔여 오차는 카테고리 축의 자체 padding 수준 (완전 정밀화는 v1.x Bridge의 몫).
+ * 요소가 없거나 유효 폭이 없으면 undefined → zoomRange가 중앙 기준으로 폴백한다.
  */
 /**
  * 소수 Position 결과(anchor zoom·중앙 배치)를 정수 Bucket 격자로 snap.

@@ -18,7 +18,8 @@ export type RangeChangeSource =
   | "resize-right"
   | "window-pan"
   | "dim-click"
-  | "wheel-zoom";
+  | "wheel-zoom"
+  | "main-pan";
 
 /** 콜백이 받는 페이로드 — 현재 Range */
 export interface RangeSnapshot {
