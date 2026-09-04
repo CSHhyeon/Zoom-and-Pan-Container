@@ -20,6 +20,8 @@
   "bugs": {
     "url": "https://github.com/CSHhyeon/Zoom-and-Pan-Container/issues"
   },
+  "license": "MIT",
+  "author": "Soohyeon Choi (https://github.com/CSHhyeon)",
   "type": "module",
   "files": [
     "dist"
