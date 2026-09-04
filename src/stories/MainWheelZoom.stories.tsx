@@ -32,6 +32,9 @@ function WheelZoomDemo() {
     getX: (d) => d.country,
     getY: (d) => d.value,
     defaultRange: { start: 5, end: 14 },
+    // Main Chart의 YAxis width(40) + margin(left 0, right 10)과 일치시킨 plot 여백.
+    // Wheel anchor 보정과 Preview 좌우 정렬이 이 한 값을 공유한다
+    inset: { left: 40, right: 10 },
     onRangeChange: () => setChangeCount((count) => count + 1),
     onRangeCommit: (snapshot, meta) => {
       setCommitCount((count) => count + 1);
@@ -61,7 +64,7 @@ function WheelZoomDemo() {
         </ResponsiveContainer>
       </div>
 
-      <ZoomAndPanPreview controller={zap} inset={{ left: 40, right: 10 }} />
+      <ZoomAndPanPreview controller={zap} />
 
       <p style={{ fontSize: 13 }}>
         현재 range: {zap.range.start} ~ {zap.range.end} (폭{" "}
@@ -85,8 +88,12 @@ function WheelZoomDemo() {
         </li>
         <li>Preview Window·Main Chart가 휠마다 실시간 동기화</li>
         <li>
-          Preview의 시작·끝이 Main Chart plot 영역(축 안쪽)과 정렬된다 —
-          <code>inset={"{ left: YAxis폭+margin.left, right: margin.right }"}</code>
+          Preview의 시작·끝이 Main Chart plot 영역(축 안쪽)과 정렬되고, 같은
+          inset이 wheel anchor 보정에도 쓰여 포인터 고정이 더 정확하다 — hook
+          옵션{" "}
+          <code>
+            inset: {"{ left: YAxis폭+margin.left, right: margin.right }"}
+          </code>
         </li>
         <li>축소 중 한쪽이 경계(0 또는 19)에 닿으면 반대쪽만 계속 벌어진다</li>
         <li>최소 폭(2포인트)·전체 범위에서 더 이상 변하지 않는다</li>

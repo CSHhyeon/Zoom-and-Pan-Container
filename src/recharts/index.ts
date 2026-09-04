@@ -2,6 +2,7 @@
 // useZoomAndPanController, ZoomAndPanPreview, ZoomAndPanBridge가 여기서 export된다.
 export {
   useZoomAndPanController,
+  type PlotInset,
   type PreviewPoint,
   type Range,
   type RangeChangeMeta,
