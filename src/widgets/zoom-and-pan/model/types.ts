@@ -56,7 +56,10 @@ export interface UseZoomAndPanControllerOptions<T, TX = unknown> {
   defaultRange?: Range;
   /** 최소 범위 폭(`end - start`). 생략 시 core 기본값(1 = 최소 두 포인트) */
   minRange?: number;
-  /** Wheel Zoom 1회당 각 Handle이 움직이는 칸 수. 생략 시 core 기본값(1) */
+  /**
+   * Wheel Zoom 1회당 각 Handle이 움직이는 칸 수 (고정 스텝).
+   * 생략 시 현재 폭 비례 — 1틱당 폭 ×0.8(확대) / ÷0.8(축소), 최소 1칸씩 — 라 데이터 수와 무관하게 몇 번의 휠로 목표 구간에 도달한다.
+   */
   zoomStep?: number;
   /**
    * Main Chart의 plot 여백 — Wheel anchor 보정·Drag Pan 폭 보정·Preview 좌우 정렬이 이 한 값을 공유한다.
