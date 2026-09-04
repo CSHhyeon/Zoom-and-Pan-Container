@@ -10,7 +10,12 @@
  * snap·최소 폭·경계 보정은 controller → core의 몫이다.
  */
 import { useCallback, useMemo, useRef } from "react";
-import type { CSSProperties, DOMAttributes, RefObject } from "react";
+import type {
+  CSSProperties,
+  DOMAttributes,
+  PointerEvent as ReactPointerEvent,
+  RefObject,
+} from "react";
 import { Area, AreaChart, ResponsiveContainer, XAxis } from "recharts";
 import type { Range } from "../core";
 import type { ZoomAndPanController } from "./useZoomAndPanController";
@@ -41,6 +46,7 @@ export function ZoomAndPanPreview<T>({
     resizeLeft,
     resizeRight,
     panTo,
+    centerAt,
     beginInteraction,
     endInteraction,
   } = controller;
@@ -95,6 +101,32 @@ export function ZoomAndPanPreview<T>({
   });
 
   /**
+   * Dim Click — 클릭한 지점이 Window 중앙에 오도록 이동.
+   * 드래그와 달리 단발 조작이라 시작-이동-종료를 한 번에 처리한다
+   * → onRangeChange와 onRangeCommit이 모두 즉시(동기로) 나간다.
+   */
+  const handleDimPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLElement>) => {
+      if (!event.isPrimary || event.button !== 0) return;
+      const container = containerRef.current;
+      if (!container) return;
+
+      // 이벤트 우선순위 최하층이지만, 배경(컨테이너)으로의 전파는 여기서 끊는다
+      event.stopPropagation();
+      const position = toBucketPosition(
+        container.getBoundingClientRect(),
+        event.clientX,
+        fullRange,
+      );
+
+      beginInteraction("dim-click");
+      centerAt(position);
+      endInteraction();
+    },
+    [containerRef, fullRange, beginInteraction, centerAt, endInteraction],
+  );
+
+  /**
    * range → 컨테이너 폭 기준 % 번역.
    * `|| 1`: 데이터 1개면 fullSpan이 0 → 0 나눗셈으로 모든 레이어가 NaN%가
    * 되는 것을 방지한다 (pct가 전부 0%로 수렴).
@@ -138,7 +170,7 @@ export function ZoomAndPanPreview<T>({
         </ResponsiveContainer>
       </div>
 
-      {/* Left Dim */}
+      {/* Left Dim — 클릭하면 그 지점이 Window 중앙에 오도록 이동 */}
       <div
         style={{
           position: "absolute",
@@ -147,8 +179,10 @@ export function ZoomAndPanPreview<T>({
           left: 0,
           width: `${leftPct}%`,
           background: DIM_BACKGROUND,
+          cursor: "pointer",
           zIndex: Z_INDEX.dim,
         }}
+        onPointerDown={handleDimPointerDown}
       />
 
       {/* Right Dim — left와 right를 동시에 못 박아 폭이 자동 계산된다 */}
@@ -160,8 +194,10 @@ export function ZoomAndPanPreview<T>({
           left: `${rightPct}%`,
           right: 0,
           background: DIM_BACKGROUND,
+          cursor: "pointer",
           zIndex: Z_INDEX.dim,
         }}
+        onPointerDown={handleDimPointerDown}
       />
 
       {/* Window — 잡고 끌면 폭을 유지한 채 이동. border-box: 테두리가 폭을 밀지 않게 */}
@@ -222,6 +258,22 @@ function handleStyle(pct: number): CSSProperties {
   };
 }
 
+// ── 픽셀 → Position 번역 ─────────────────────────────────────────
+
+/**
+ * 컨테이너 rect 기준 clientX → Bucket Position.
+ * 좌표계 계약(plot 영역 = 컨테이너) 덕분에 선형 변환만으로 충분하다.
+ * 컨테이너 밖 위치도 자르지 않는다 — 경계 보정은 core의 몫.
+ */
+function toBucketPosition(
+  rect: DOMRect,
+  clientX: number,
+  fullRange: Range,
+): number {
+  const ratio = (clientX - rect.left) / rect.width;
+  return fullRange.start + ratio * (fullRange.end - fullRange.start);
+}
+
 // ── Preview 드래그 (Handle·Window 공용) ──────────────────────────
 
 /** 진행 중인 드래그 세션. 렌더에 쓰이는 값이 아니라 state가 아닌 ref에 담는다 */
@@ -263,13 +315,6 @@ function usePreviewDrag(
   // 핸들러 묶음의 참조를 고정해 대상 요소가 매 렌더 새 props를 받지 않게 한다.
   // (콜백 묶음 객체는 매 렌더 새로 만들어지므로 개별 함수를 deps로 쓴다)
   return useMemo<DOMAttributes<HTMLElement>>(() => {
-    const toPosition = (rect: DOMRect, clientX: number) => {
-      // 컨테이너 왼쪽 끝 기준 가로 비율 → Bucket Position.
-      // 좌표계 계약(plot 영역 = 컨테이너) 덕분에 선형 변환만으로 충분하다.
-      const ratio = (clientX - rect.left) / rect.width;
-      return fullRange.start + ratio * (fullRange.end - fullRange.start);
-    };
-
     return {
       onPointerDown: (event) => {
         // 주 포인터의 주 버튼만 드래그로 취급 (우클릭, 멀티터치 두 번째 손가락 제외)
@@ -283,13 +328,13 @@ function usePreviewDrag(
         event.currentTarget.setPointerCapture(event.pointerId);
         const rect = container.getBoundingClientRect();
         sessionRef.current = { pointerId: event.pointerId, rect };
-        onDragStart?.(toPosition(rect, event.clientX));
+        onDragStart?.(toBucketPosition(rect, event.clientX, fullRange));
       },
 
       onPointerMove: (event) => {
         const session = sessionRef.current;
         if (!session || event.pointerId !== session.pointerId) return;
-        onDragTo(toPosition(session.rect, event.clientX));
+        onDragTo(toBucketPosition(session.rect, event.clientX, fullRange));
       },
 
       // 드래그 종료를 한 곳으로 수렴: 캡처된 포인터는 up/cancel 시 자동으로

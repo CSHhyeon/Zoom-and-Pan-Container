@@ -8,6 +8,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import type React from "react";
 import {
+  centerRangeAt,
   clampRange,
   isSameRange,
   panRange,
@@ -131,6 +132,12 @@ export interface ZoomAndPanController<T> {
    * 반올림 snap 후 core panRange를 거치므로 경계에 닿으면 벽에 붙어 멈춘다 (폭 불변).
    */
   panTo: (nextStart: number) => void;
+  /**
+   * Dim Click — 폭을 유지한 채 position이 Window 중앙에 오도록 이동한다.
+   * position은 Bucket Position(소수 가능). 중앙 배치 후 시작점을 반올림 snap하며,
+   * 중앙 배치보다 전체 경계 준수가 우선이다 (경계를 넘으면 벽에 붙어 멈춤).
+   */
+  centerAt: (position: number) => void;
   /** 원본 전체 데이터 — 사용자가 index로 원본 datum을 되찾을 때 사용 */
   data: readonly T[];
   /**
@@ -261,6 +268,21 @@ export function useZoomAndPanController<T, TX = unknown>(
     [applyRangeOperation, constraints],
   );
 
+  // 중앙 배치(폭 유지·경계 우선) 후, 시작점을 정수 격자에 snap한다.
+  // 홀수 폭·소수 position이면 배치 결과가 소수라 배치만으로는 snap이 안 된다.
+  const centerAt = useCallback(
+    (position: number) =>
+      applyRangeOperation("dim-click", (current) => {
+        const centered = centerRangeAt(current, position, constraints);
+        return panRange(
+          centered,
+          Math.round(centered.start) - centered.start,
+          constraints,
+        );
+      }),
+    [applyRangeOperation, constraints],
+  );
+
   const beginInteraction = useCallback(
     (source: RangeChangeSource) => beginSession(source, readCurrentRange()),
     [beginSession, readCurrentRange],
@@ -310,6 +332,7 @@ export function useZoomAndPanController<T, TX = unknown>(
     resizeLeft,
     resizeRight,
     panTo,
+    centerAt,
     beginInteraction,
     endInteraction,
     data,

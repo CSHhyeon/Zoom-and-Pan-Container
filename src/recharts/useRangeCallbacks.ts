@@ -13,7 +13,11 @@ import { useCallback, useEffect, useRef } from "react";
 import { isSameRange, type Range } from "../core";
 
 /** Range 변경을 일으킨 조작의 출처. 조작 기능이 추가될 때마다 늘어난다 */
-export type RangeChangeSource = "resize-left" | "resize-right" | "window-pan";
+export type RangeChangeSource =
+  | "resize-left"
+  | "resize-right"
+  | "window-pan"
+  | "dim-click";
 
 /** 콜백이 받는 페이로드 — 현재 Range */
 export interface RangeSnapshot {
