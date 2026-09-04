@@ -14,7 +14,6 @@ import {
   panRange,
   resizeLeftRange,
   resizeRightRange,
-  zoomRange,
   type Range,
   type RangeConstraints,
   type ZoomDirection,
@@ -26,6 +25,11 @@ import {
 } from "../../../features/range-callbacks";
 import { useWheelZoom } from "../../../features/wheel-zoom";
 import { snapToBucketGrid } from "../lib/snapToBucketGrid";
+import {
+  startWheelZoomSession,
+  zoomWheelSession,
+  type WheelZoomSession,
+} from "../lib/wheelZoomSession";
 import { useRangeState } from "./useRangeState";
 import type {
   PlotInset,
@@ -36,13 +40,6 @@ import type {
 
 // touchAction pan-y: 가로 제스처는 Drag Pan이 소비하고 세로 스와이프는 페이지 스크롤로 남긴다
 const MAIN_WRAPPER_STYLE: React.CSSProperties = { touchAction: "pan-y" };
-
-/**
- * Wheel Zoom 1틱당 폭 배율 (zoomStep 미지정 시) — 확대 ×0.8 / 축소 ÷0.8.
- * 고정 칸 수 스텝은 대용량에서 수백 틱이 필요해 비율 기반으로 간다 (지도·MUI Charts 방식).
- * 두 방향이 정확히 역연산이라 확대→축소 왕복이 제자리로 돌아오고, 좁은 창에서는 최소 1칸(step 하한)으로 정밀 조작이 유지된다.
- */
-const WHEEL_ZOOM_WIDTH_FACTOR = 0.8;
 
 export function useZoomAndPanController<T, TX = unknown>(
   options: UseZoomAndPanControllerOptions<T, TX>,
@@ -153,72 +150,35 @@ export function useZoomAndPanController<T, TX = unknown>(
     [endSession, readCurrentRange],
   );
 
-  // Wheel Zoom — 휠 시작 시점에 포인터와 가장 가까운 데이터 포인트를 pivot으로 고정하고,
-  // 세션 내내 그 점의 창 내 비율(= 화면 위치)을 유지한 채 확대·축소한다 (지도 방식).
-  // anchorRatio(plot 영역 안 포인터 비율) 측정은 useWheelZoom의 몫 — 여기서는 Range Position으로 번역한다 (없으면 중앙 기준 폴백).
-  // preventDefault용 non-passive 리스너와 150ms 정착 타이머도 useWheelZoom이 담당.
-  //
-  // 세션 상태 두 가지가 흔들림을 막는다:
-  // - anchor: 소수 포인터 위치가 아니라 가장 가까운 정수 Bucket(Tooltip이 선택한 그 점)으로 세션당 1회 고정.
-  //   점 사이 허공을 pivot으로 잡으면 확대할수록 양옆 실제 포인트가 전부 밀려 보인다 — 실제 점이 pivot이면 그 점은 제자리다.
-  // - base: snap 전 소수 range를 유지하고 zoom은 항상 그 위에서 이어간다.
-  //   snap된 상태에서 매 틱 다시 계산하면 반올림 오차가 같은 방향으로 누적되어 anchor가 흘러간다.
-  // snap은 표시용 상태에만 적용된다 (잔여 진동 최대 0.5칸 — 정수 Bucket 렌더의 구조적 한계, 비누적).
-  const wheelSessionRef = useRef<{
-    base: Range;
-    anchor: number | undefined;
-  } | null>(null);
+  // Wheel Zoom — 포인터와 가장 가까운 데이터 포인트를 세션 pivot으로 고정한 확대·축소.
+  // 계산 규칙(세션 고정 anchor·소수 base·비율 스텝·표시 비율)은 전부 lib/wheelZoomSession이 담당하고,
+  // 여기서는 세션 수명(ref 유지·종료 시 초기화)과 상태 반영만 맡는다.
+  // anchorRatio 측정·preventDefault·150ms 정착 타이머는 useWheelZoom의 몫.
+  const wheelSessionRef = useRef<WheelZoomSession | null>(null);
 
   const wheelZoomBy = useCallback(
     (
       direction: ZoomDirection,
       anchorRatio: number | undefined,
     ): number | undefined => {
-      // anchor 포인트가 새 창에서 렌더되는 비율 — useWheelZoom이 hover 재전송을 이 위치로 보내
-      // Tooltip 선택을 세션 내내 anchor 데이터에 고정한다 (마우스 원좌표로 쏘면 두 점 사이에서 최근접이 틱마다 뒤집힌다)
+      // 반환값: anchor가 새 창에서 렌더되는 비율 — useWheelZoom이 hover 재전송을 이 위치로 보내
+      // Tooltip 선택을 세션 내내 anchor 데이터에 고정한다
       let anchorDisplayRatio: number | undefined;
 
       applyRangeOperation("wheel-zoom", (current) => {
-        const session = wheelSessionRef.current ?? {
-          base: current,
-          anchor:
-            anchorRatio === undefined
-              ? undefined
-              : Math.round(
-                  current.start + anchorRatio * (current.end - current.start),
-                ),
-        };
-        // step(한쪽 Handle 이동량) 환산: 폭 ×F는 step (1-F)/2, ÷F는 step (1/F-1)/2 — 왕복이 역연산이 되는 짝
-        const span = Math.abs(session.base.end - session.base.start);
-        const step =
-          zoomStep ??
-          Math.max(
-            1,
-            direction === "in"
-              ? span * ((1 - WHEEL_ZOOM_WIDTH_FACTOR) / 2)
-              : span * ((1 / WHEEL_ZOOM_WIDTH_FACTOR - 1) / 2),
-          );
-        const zoomed = zoomRange(
-          session.base,
+        const session =
+          wheelSessionRef.current ??
+          startWheelZoomSession(current, anchorRatio);
+        const tick = zoomWheelSession(
+          session,
           direction,
           constraints,
-          step,
-          session.anchor,
+          zoomStep,
         );
-        wheelSessionRef.current = { base: zoomed, anchor: session.anchor };
 
-        const next = snapToBucketGrid(zoomed, constraints);
-        if (session.anchor !== undefined) {
-          const nextSpan = next.end - next.start;
-          // 경계 clamp로 창이 밀렸으면 anchor도 창 안으로 — 화면에 남은 위치 기준
-          const pinned = Math.min(
-            Math.max(session.anchor, next.start),
-            next.end,
-          );
-          anchorDisplayRatio =
-            nextSpan === 0 ? 0.5 : (pinned - next.start) / nextSpan;
-        }
-        return next;
+        wheelSessionRef.current = tick.session;
+        anchorDisplayRatio = tick.anchorDisplayRatio;
+        return tick.next;
       });
 
       return anchorDisplayRatio;
