@@ -3,7 +3,7 @@
  *
  * 지도처럼 콘텐츠가 손가락을 따라온다 — 오른쪽으로 끌면 이전(왼쪽) 데이터가 드러나도록 range는 포인터 반대 방향으로 이동한다.
  * 이동량은 "시작 시점 Window 폭" 비율로 환산한다 (Preview는 전체 폭 비율 — 다름).
- * plot 폭은 wrapper 폭 − inset 근사 (완전 정밀화는 v1.x Bridge).
+ * plot 폭은 wrapper 폭 − inset 근사 (완전 정밀화는 0.4.0 Bridge).
  * 포인터 생명주기(캡처·1회 종료)는 usePointerDragSession이 담당.
  */
 import { useCallback } from "react";

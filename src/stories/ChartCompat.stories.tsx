@@ -7,7 +7,7 @@
  * — 검증 대상인 "사용자가 자기 차트를 그대로 유지한다"는 계약을 Story 구조 자체로 보여주기 위함.
  *
  * Bar 계열 주의: 카테고리 축이 point(끝점 정렬)가 아니라 band(칸 중앙 정렬)라서
- * wheel anchor의 wrapper 근사 오차가 최대 반 칸까지 커질 수 있다 (허용 범위 — 정밀화는 v1.x Bridge).
+ * wheel anchor의 wrapper 근사 오차가 최대 반 칸까지 커질 수 있다 (허용 범위 — 정밀화는 0.4.0 Bridge).
  */
 import { useState } from "react";
 import type { ReactElement } from "react";
@@ -192,7 +192,7 @@ function BarCompatDemo() {
       renderTrend={renderBarTrend}
       checkpoints={[
         "Zoom·Pan에 따라 막대 개수와 폭이 자연스럽게 변한다 (Window 폭 = 막대 수)",
-        "band 축(칸 중앙 정렬)이라 wheel anchor·Preview 정렬이 최대 반 칸 어긋날 수 있다 — 허용 범위, 세션 내 anchor 고정은 유지 (정밀화는 v1.x Bridge)",
+        "band 축(칸 중앙 정렬)이라 wheel anchor·Preview 정렬이 최대 반 칸 어긋날 수 있다 — 허용 범위, 세션 내 anchor 고정은 유지 (정밀화는 0.4.0 Bridge)",
         "드래그 Pan 이동량이 손끝과 근사 일치한다 (plot 폭 근사 오차 이내)",
       ]}
       renderChart={(zap) => (

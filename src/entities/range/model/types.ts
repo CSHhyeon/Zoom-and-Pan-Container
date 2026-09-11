@@ -7,7 +7,7 @@
 /**
  * Range 표현 모드.
  * - "bucket": 데이터 Index 기준. MVP 구현 대상
- * - "continuous": 연속 값(숫자/시간) 기준. v1.x에서 구현
+ * - "continuous": 연속 값(숫자/시간) 기준. 0.5.0에서 구현
  */
 export type RangeMode = "bucket" | "continuous";
 
