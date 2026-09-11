@@ -267,7 +267,7 @@ npm run storybook   # http://localhost:6006
 
 ```bash
 npm run dev         # 위 "빠른 시작" 예제를 그대로 띄우는 Vite 플레이그라운드
-npm test            # Vitest (core·widget 순수 로직 단위 테스트)
+npm test            # Vitest (core 순수 함수 · hook 공개 표면 · wheel 세션 로직 단위 테스트)
 npm run lint        # ESLint (FSD 레이어 경계 검사 포함)
 npm run build       # 라이브러리 빌드 (ESM + 타입 선언 → dist/)
 ```
