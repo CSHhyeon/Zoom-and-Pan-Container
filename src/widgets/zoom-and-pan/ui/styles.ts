@@ -1,5 +1,5 @@
 /**
- * Preview UI 스타일 상수 (옵션화는 v1.x에서 검토 — 지금은 한곳에 모아두기만).
+ * Preview UI 스타일 상수 (옵션화는 0.3.0에서 — 지금은 한곳에 모아두기만).
  * z-index 계층이 그대로 이벤트 우선순위다: Handle(30) > Window(20) > Dim(10).
  */
 import type { CSSProperties } from "react";

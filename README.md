@@ -97,6 +97,21 @@ function MyChart() {
 
 이것만으로 휠 줌 · 드래그 팬 · Preview 조작이 전부 동작합니다.
 
+Preview 추이는 기본으로 내장 AreaChart가 그립니다. Main Chart와 같은 모양(Line 위에 Line)으로 맞추려면 한 단계만 더:
+
+```tsx
+// ⑤ (선택) Preview 추이를 Main Chart의 미니 버전으로 — 컴포넌트 밖에 선언해 참조를 고정
+const renderTrend = (data: typeof DATA) => (
+  <LineChart data={data} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+    <Line dataKey="value" stroke="#4f7cf7" dot={false} isAnimationActive={false} />
+  </LineChart>
+);
+
+<ZoomAndPanPreview controller={zap} renderTrend={renderTrend} />;
+```
+
+hook은 여러분의 차트 JSX를 보지 못하므로(headless) Main Chart의 타입을 스스로 알 수 없습니다. 그래서 "미니 버전을 직접 그려 달라"는 방식을 택했습니다. 좌표 규칙(margin 0 · 축 미지정)은 아래 "Preview 추이 커스텀"을 참고하세요.
+
 > **팁**: 조작 중에는 리렌더가 잦으므로 시리즈에 `isAnimationActive={false}`를 권장합니다. 포인트가 수백 개라면 `dot={false}`도 함께 쓰세요.
 
 ## 핵심 개념: Bucket Range
@@ -131,7 +146,7 @@ range = { start: 2, end: 6 }  →  index 2~6, 데이터 포인트 5개 표시
 | 옵션            | 타입                       | 기본값     | 설명                                                                                                          |
 | --------------- | -------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------- |
 | `data`          | `readonly T[]`             | (필수)     | 전체 원본 데이터. hook은 자르기만 하고 변형하지 않습니다                                                      |
-| `getX`          | `(datum, index) => TX`     | (필수)     | 한 행에서 x값을 뽑는 함수                                                                                     |
+| `getX`          | `(datum, index) => TX`     | (필수)     | 한 행에서 x값을 뽑는 함수. **0.1.0에서는 받기만 하고 아직 소비하지 않습니다** — Handle Tooltip(0.3.0)·`followLatest`(0.2.0)가 사용 예정                                                                                     |
 | `getY`          | `(datum, index) => number` | —          | Preview 내장 추이(AreaChart)의 y값. `renderTrend`를 쓰면 불필요                                               |
 | `defaultRange`  | `{ start, end }`           | 전체 범위  | 초기 구간 (Uncontrolled — 최초 mount에만 반영)                                                                |
 | `minRange`      | `number`                   | `1`        | 최소 폭(`end - start`). 확대는 여기서 멈춥니다                                                                |
@@ -139,6 +154,8 @@ range = { start: 2, end: 6 }  →  index 2~6, 데이터 포인트 5개 표시
 | `inset`         | `{ left?, right? }`        | `{ 0, 0 }` | Main Chart plot 영역 좌우 여백(px). 아래 "inset" 참고                                                         |
 | `onRangeChange` | `(snapshot, meta) => void` | —          | 조작 중 range가 바뀔 때마다 (rAF throttle — 프레임당 최대 1회). 화면 동기화용                                 |
 | `onRangeCommit` | `(snapshot, meta) => void` | —          | 한 번의 조작이 끝났을 때 1회. **서버 요청은 여기서**                                                          |
+
+> **datum** = 데이터 항목 한 개. `data` 배열에서 꺼낸 행 하나이며, `getX(datum, index)`처럼 콜백의 첫 인자로 옵니다 (D3·Recharts의 관례 용어).
 
 #### 반환값 (controller) — 자주 쓰는 것부터
 
@@ -211,14 +228,27 @@ const renderTrend = (data: MyDatum[]) => (
 | LineChart / AreaChart    | ✅   | 포인트가 plot 양끝에 정렬 (point 축)                                                                                            |
 | BarChart                 | ✅   | 막대가 칸 중앙에 정렬 (band 축) — 휠 anchor·Preview 정렬에 최대 반 칸 근사 오차가 있습니다 (설계된 허용 범위)                   |
 | ComposedChart            | ✅   | Bar가 있으면 band 축 공유 — Line의 점이 Bar 중앙 위에 오고, 양끝이 plot 가장자리에서 반 칸 안쪽에서 시작·끝나는 것이 정상입니다 |
-| Scatter / Pie / Radar 등 | ❌   | v1.x 이후 검토                                                                                                                  |
+| Scatter / Pie / Radar 등 | ❌   | 0.5.0(Continuous·Scatter) 이후 검토                                                                                                                  |
 
-## 알려진 한계 (MVP)
+## 알려진 한계 (0.1.0)
 
-- **Uncontrolled 전용** — range를 외부 state로 제어하는 Controlled 모드는 v1.x
-- **Bucket 모드 전용** — range가 항상 정수 index라, 깊게 확대하면 고정점이 최대 반 칸 진동합니다 (연속값 축 Continuous 모드는 v1.x)
-- **plot 영역은 `inset` 근사** — 자동 측정(Bridge)은 v1.x
+- **Uncontrolled 전용** — range를 외부 state로 제어하는 Controlled 모드는 0.2.0
+- **Bucket 모드 전용** — range가 항상 정수 index라, 깊게 확대하면 고정점이 최대 반 칸 진동합니다 (연속값 축 Continuous 모드는 0.5.0)
+- **plot 영역은 `inset` 근사** — 자동 측정(Bridge)은 0.4.0
 - Chart Resize 추적, Pinch Zoom, 키보드 조작은 범위 외
+
+## 로드맵 · 버전 규칙
+
+지금 릴리스는 **0.1.0**(MVP)입니다. 0.x에서는 기능 단계 하나가 마이너 하나이며, **0.x 마이너에는 파괴적 변경이 포함될 수 있습니다** (CHANGELOG에 명시). 1.0.0은 아래 기능이 모두 들어간 뒤 API를 동결하는 별도 릴리스입니다.
+
+| 버전  | 내용                                                                              |
+| ----- | --------------------------------------------------------------------------------- |
+| 0.1.0 | MVP — Bucket 모드 · Wheel Zoom · Drag Pan · Preview 미니맵 (릴리스됨)             |
+| 0.2.0 | Controlled `range` · `reset()` · `followLatest`                                   |
+| 0.3.0 | Handle Tooltip · `formatX` · Y축 auto/fixed · Preview 스타일 옵션 · native-brush   |
+| 0.4.0 | `<ZoomAndPanBridge>` 정밀 좌표(opt-in) · Main Chart Click Event                   |
+| 0.5.0 | Continuous 모드 · `snapToDataPoint=false` · ScatterChart                          |
+| 1.0.0 | API 동결                                                                          |
 
 ## 데모
 
@@ -236,7 +266,7 @@ npm run storybook   # http://localhost:6006
 ## 개발
 
 ```bash
-npm run dev         # Vite 플레이그라운드
+npm run dev         # 위 "빠른 시작" 예제를 그대로 띄우는 Vite 플레이그라운드
 npm test            # Vitest (core·widget 순수 로직 단위 테스트)
 npm run lint        # ESLint (FSD 레이어 경계 검사 포함)
 npm run build       # 라이브러리 빌드 (ESM + 타입 선언 → dist/)

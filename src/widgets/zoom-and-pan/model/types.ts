@@ -64,7 +64,7 @@ export interface UseZoomAndPanControllerOptions<T, TX = unknown> {
   zoomStep?: number;
   /**
    * Main Chart의 plot 여백 — Wheel anchor 보정·Drag Pan 폭 보정·Preview 좌우 정렬이 이 한 값을 공유한다.
-   * headless라 사용자 차트의 축 폭을 알 수 없어 값으로 받는다 — 자동화는 v1.x Bridge.
+   * headless라 사용자 차트의 축 폭을 알 수 없어 값으로 받는다 — 자동화는 0.4.0 Bridge.
    */
   inset?: PlotInset;
   /**
